@@ -4,7 +4,6 @@ import constants
 import guides
 
 
-# lets just test out git
 def get_name_from_joint(joint):
     if "_primary_jnt" in str(joint):
         return str(joint).replace("_primary_jnt", "")
