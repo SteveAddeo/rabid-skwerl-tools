@@ -7,8 +7,10 @@ def make_offset_groups():
     if not pm.ls(sl=1):
         pm.error("Nothing Selected")
     for node in pm.ls(sl=1):
+        if not pm.nodeType(node) == "transform":
+            continue
         parent = pm.listRelatives(p=1)
-        grp = pm.group(em=1, n="{}_offset_grp".format(node))
+        grp = pm.group(em=1, n="{}_offset_grp".format(str(node)))
         matrix.worldspace_to_matrix(grp, node)
         if parent:
             pm.parent(grp, parent[0])

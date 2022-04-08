@@ -1,14 +1,47 @@
 import pymel.core as pm
+import primary
 
 
 class BlendColors(object):
-    def __init__(self, drivers=None, driven=None):
+    def __init__(self, name=None, drivers=None, driven=None, const_type="parent"):
+        self.name = name
         self.drivers = drivers
         self.driven = driven
+        self.constType = const_type
         if self.drivers is None or self.driven is None:
             self.get_driver_driven()
-        self.name = self.get_name()
-        self.bcList = []
+        if self.name is None:
+            self.name = primary.get_name_from_joint(self.driven)
+        self.blendColors = self.get_blend_colors()
+
+    def get_blend_colors(self):
+        bcNodeList = []
+        for attr in self.get_constrain_attrs():
+            # Create a Blend Colors node (if one doesn't already exist)
+            bcName = "{}{}_bc".format(self.name, attr)
+            if bcName in pm.ls():
+                bcNodeList.append(pm.ls(bcName)[0])
+                continue
+            bcNode = pm.createNode("blendColors", n=bcName)
+            # Make sure both color(transform) values are set to 0
+            pm.setAttr("{}.color1".format(bcName), 0, 0, 0)
+            pm.setAttr("{}.color2".format(bcName), 0, 0, 0)
+            # Add node to list of blend colors
+            bcNodeList.append(bcNode)
+        return bcNodeList
+
+    def get_constrain_attrs(self):
+        if self.constType == "parent":
+            attrs = ["_pos", "_rot"]
+        elif self.constType == "point":
+            attrs = ["_pos"]
+        elif self.constType == "orient":
+            attrs = ["_rot"]
+        elif self.constType == "scale":
+            attrs = ["_scl"]
+        else:
+            attrs = ["_pos", "_rot", "_scl"]
+        return attrs
 
     def get_driver_driven(self):
         # Check to make sure at least two objects are selected
@@ -22,30 +55,8 @@ class BlendColors(object):
             pm.warning("more than two drivers were selected; only the first two are used")
         self.drivers = drivers[0:2]
 
-    def get_name(self):
-        name = str(self.driven)
-        if "_jnt" in name:
-            name = name.replace("_jnt", "")
-        if "_primary" in name:
-            name = name.replace("_primary", "")
-        return name
-
-    def make_blend_colors(self, attrs):
-        bcNodeList = []
-        for attr in attrs:
-            # Create a Blend Colors node (if one doesn't already exist)
-            bcName = "{}{}_bc".format(self.name, attr)
-            bcNode = pm.createNode("blendColors", n=bcName)
-            # Make sure both color values are set to
-            pm.setAttr("{}.color1".format(bcName), 0, 0, 0)
-            pm.setAttr("{}.color2".format(bcName), 0, 0, 0)
-            # Add node to list of blend colors
-            bcNodeList.append(bcNode)
-        self.bcList = bcNodeList
-        return bcNodeList
-
-    def make_connections(self, bcnodes):
-        for node in bcnodes:
+    def make_connections(self, bc_nodes):
+        for node in bc_nodes:
             if str(node).split("_")[-2] == "pos":
                 attr = "translate"
             elif str(node).split("_")[-2] == "rot":
@@ -57,40 +68,78 @@ class BlendColors(object):
                 pm.connectAttr("{}.{}".format(self.drivers[1], attr), "{}.color2".format(node))
             pm.connectAttr("{}.output".format(node), "{}.{}".format(self.driven, attr))
 
-    def make_constraint(self, const):
-        if const == "parent":
-            attrList = ["_pos", "_rot"]
-        elif const == "point":
-            attrList = ["_pos"]
-        elif const == "orient":
-            attrList = ["_rot"]
-        elif const == "scale":
-            attrList = ["_scl"]
+
+class Build(object):
+    def __init__(self, name=None, primary_joint=None):
+        if primary_joint is None:
+            primary_joint = self.get_joint_primary()
+        if name is None:
+            name = primary.get_name_from_joint(primary_joint)
+        self.name = name
+        self.primaryChain = primary.list_joints_in_chain(primary_joint)
+        self.fkChainGrp = self.get_chain_grp(chain_type="FK")
+        self.ikChainGrp = self.get_chain_grp(chain_type="IK")
+        self.fkChain = self.get_chain(chain_type="FK")
+        self.ikChain = self.get_chain(chain_type="IK")
+        self.blendColors = self.get_blend_colors()
+        # TODO: setup IK system
+        self.ikHandleList = None
+        self.ikPoleVectorLocList = None
+        self.fkPoleVectorProxyList = None
+
+    def get_blend_colors(self):
+        bcDict = {}
+        for i, jnt in enumerate(self.primaryChain):
+            fkik = BlendColors(self.name, [self.fkChain[i], self.ikChain[i]], jnt)
+            bcDict[str(jnt)] = fkik.blendColors
+        return bcDict
+
+    def get_chain(self, chain_type="FK"):
+        # Set chain's naming convention
+        if "primary" in str(self.primaryChain):
+            name = str(self.primaryChain).replace("primary", chain_type)
+        elif "_jnt" in str(self.primaryChain):
+            name = str(self.primaryChain).replace("jnt", "{}_jnt".format(chain_type))
         else:
-            attrList = ["_pos", "_rot", "_scl"]
-        bcNodes = self.make_blend_colors(attrList)
-        self.make_connections(bcNodes)
-        return bcNodes
+            name = "{}_{}_jnt".format(str(self.primaryChain), chain_type)
+        if name not in pm.ls():
+            return self.make_chain(name, chain_type)
+        return pm.ls(name)[0]
 
+    def get_chain_grp(self, chain_type="FK"):
+        grpName = "{}_{}_jnts_grp".format(self.name, chain_type)
+        if grpName in pm.ls():
+            return pm.ls(grpName)[0]
+        grp = pm.group(em=1, n=grpName)
+        parent = pm.listRelatives("{}_primary_jnts_grp".format(self.name), p=1)[0]
+        pm.parent(grp, parent)
+        return grp
 
-def make_chain(orig_chain, chain_type="FK"):
-    if "primary" in str(orig_chain):
-        name = str(orig_chain).replace("primary", chain_type)
-    elif "_jnt" in str(orig_chain):
-        name = str(orig_chain).replace("jnt", "{}_jnt".format(chain_type))
-    else:
-        name = "{}_{}_jnt".format(str(orig_chain), chain_type)
-    newChain = pm.duplicate(orig_chain, n=name)
-    jnts = pm.listRelatives(newChain, ad=1)
-    jnts.append(newChain[0])
-    for jnt in jnts:
-        if "primary" in str(jnt):
-            newName = str(jnt).replace("primary", chain_type)
-            pm.rename(jnt, newName)
-        if "_{}_".format(chain_type) not in str(jnt):
-            newName = "{}_{}".format(str(jnt), chain_type)
-            pm.rename(jnt, newName)
-    return jnts
+    def get_joint_primary(self):
+        if "{}_primary_jnts_grp".format(self.name) not in pm.ls():
+            return pm.error("{} primary joint chain does not exist".format(self.name))
+        return pm.listRelatives("{}_primary_jnts_grp".format(self.name), c=1)[0]
+
+    def make_chain(self, name, chain_type="FK"):
+        # Duplicate primary chain to create new chain
+        newChain = pm.duplicate(self.primaryChain[0], n=name)
+        # Parent chain to the group
+        if chain_type == "FK":
+            parent = self.fkChainGrp
+        else:
+            parent = self.ikChainGrp
+        pm.parent(newChain, parent)
+        return self.rename_joints(primary.list_joints_in_chain(newChain), chain_type)
+
+    def rename_joints(self, joints, chain_type):
+        for jnt in joints:
+            if "primary" in str(jnt):
+                newName = str(jnt).replace("primary", chain_type)
+                pm.rename(jnt, newName)
+            if "_{}_".format(chain_type) not in str(jnt):
+                newName = "{}_{}".format(str(jnt), chain_type)
+                pm.rename(jnt, newName)
+        return joints
 
 
 def make_fkik(chains=None):
@@ -115,6 +164,6 @@ def make_fkik(chains=None):
             bcNodes = jntbc.make_constraint("parent")
             jntsDict[jnt]["blendColors"] = bcNodes
         # Add jntsDict to fkikDict
-        fkikDict[driver] = jntsDict
+        fkikDict[str(driver).split("_")[0]] = jntsDict
     return fkikDict
 

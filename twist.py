@@ -1,27 +1,27 @@
 import pymel.core as pm
 
 # Make upper twist joints
-# Unparent driverChain[2]
-# Duplicate driverChain[0] to make Twist joints
-# Rename duplicate joints. Replace "driver" with "twist_start" and "twist_end" (check for 1 at end of start)
-# Reparent driverChain[2] to driverChain[1]
+# Unparent primaryChain[2]
+# Duplicate primaryChain[0] to make Twist joints
+# Rename duplicate joints. Replace "primary" with "twist_start" and "twist_end" (check for 1 at end of start)
+# Reparent primaryChain[2] to primaryChain[1]
 
-# Make lowerj twist joints
-# Unparent driverChain[1]
-# if len(driverChain) > 3: Unparent driverChain[3]
-# Duplicate driverChain[1]
-# Rename duplicate joints. Replace "driver" with "twist_start" and "twist_end" (check for 1 at end of start)
-# Reparent driverChain[1] to driverChain[0]
-# if driverChain[3]: reparent driverChain[3] to driverChain[2]
+# Make lower twist joints
+# Unparent primaryChain[1]
+# if len(primaryChain) > 3: Unparent primaryChain[3]
+# Duplicate primaryChain[1]
+# Rename duplicate joints. Replace "primary" with "twist_start" and "twist_end" (check for 1 at end of start)
+# Reparent primaryChain[1] to primaryChain[0]
+# if primaryChain[3]: reparent primaryChain[3] to primaryChain[2]
 
 # Make meta twist joints
 # Check if needed
-# Unparent driverChain[2]
-# if len(driverChain) > 4 (it shouldn't be): unparent driverChain[4]
-# Duplicate driverChain[2]
-# Rename duplicate joints. Replace "driver" with "twist_start" and "twist_end" (check for 1 at end of start)
-# Reparent driverChain[2] to driverChain[1]
-# if drivers[4] (there shouldn't be): reparent driverChain[4] to driverChain[3]
+# Unparent primaryChain[2]
+# if len(primaryChain) > 4 (it shouldn't be): unparent primaryChain[4]
+# Duplicate primaryChain[2]
+# Rename duplicate joints. Replace "primary" with "twist_start" and "twist_end" (check for 1 at end of start)
+# Reparent primaryChain[2] to primaryChain[1]
+# if primarys[4] (there shouldn't be): reparent primaryChain[4] to primaryChain[3]
 
 # Make the follow joints
 # Duplicate Twist chains to make Follow joints
@@ -35,7 +35,7 @@ import pymel.core as pm
 #   create locator
 #   rename locator. Replace "jnt" with "up_loc"
 #   create offset group for end_up_loc
-#   matrix move (or pt/orient constrain and delete if earlier Maya version) offset_grp to next joint in driver chain
+#   matrix move (or pt/orient constrain and delete if earlier Maya version) offset_grp to next joint in primary chain
 #   move locator based on scale
 #   parent twist_jnt to corresponding follow_jnt
 #   parent twist_start_up_loc to follow_start
