@@ -81,7 +81,7 @@ class Build(object):
             guidesList.append(guide)
             pm.setAttr("{}.translate{}".format(guide, self.axis), i * self.scale)
             # Lock attributes you don't want to be changed so the rig is built properly
-            for v in constants.VECTORS:
+            for v in constants.AXES:
                 pm.setAttr("{}.rotate{}".format(guide, v), lock=True, keyable=False, channelBox=False)
                 if i == 0:
                     pm.setAttr("{}.scale{}".format(guide, v), self.scale / 5)

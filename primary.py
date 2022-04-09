@@ -42,17 +42,25 @@ class Build(object):
             joints = self.primaryJoints[1:-1]
         for i, jnt in enumerate(joints[1:-1], 1):
             prevJnt = joints[i - 1]
+            # Get the Worldspace Matrix of the joints
             jntWS = pm.xform(jnt, q=1, m=1, ws=1)
             prevJntWS = pm.xform(prevJnt, q=1, m=1, ws=1)
-            mtxRange = constants.get_vector_matrix_range(self.orientation[-1])
+            # Get Axis Direction (matrix)
+            mtxRange = constants.get_axis_matrix_range(self.orientation[-1])
             jntAxis = api.MVector(jntWS[mtxRange[0]:mtxRange[1]])
             prevJntAxis = api.MVector(prevJntWS[mtxRange[0]:mtxRange[1]])
-            for n, v in enumerate(jntAxis):
-                jntV = constants.is_positive(v)
-                prevJntV = constants.is_positive(prevJntAxis[n])
-                if not jntV == prevJntV:
+            # Get Axis direction (range -1.0 - 1.0)
+            axisV = constants.get_axis_vector(self.orientation[-1])
+            jntAxisDir = jntAxis * api.MVector(axisV[0], axisV[1], axisV[2])
+            prevJntAxisDir = prevJntAxis * api.MVector(axisV[0], axisV[1], axisV[2])
+            # Are axes looking up (is it positive)?
+            jntUp = constants.is_positive(jntAxisDir)
+            prevJntUp = constants.is_positive(prevJntAxisDir)
+            if not jntUp == prevJntUp:
+                if jntUp and (jntUp - prevJntUp) > .5:
                     self.fix_rotation(jnt, joints[i - 1], joints[i + 1])
-                    break
+                if prevJntUp and (prevJntUp - jntUp) > .5:
+                    self.fix_rotation(jnt, joints[i - 1], joints[i + 1])
 
     def check_rotation_order(self, node):
         if not self.orientation == (str(node.getRotationOrder()).lower()):
@@ -62,7 +70,7 @@ class Build(object):
     def fix_rotation(self, joint, prev_jnt, next_jnt):
         rotList = [0, 0, 0]
         rotAmnt = 180
-        rotList[constants.get_vector_index(self.orientation[0])] = rotAmnt
+        rotList[constants.get_axis_index(self.orientation[0])] = rotAmnt
         pm.parent(joint, w=1)
         if pm.listRelatives(next_jnt, c=1):
             pm.parent(next_jnt, w=1)
@@ -140,10 +148,10 @@ class Build(object):
         # Orient tip to World or local
         if self.orientTip:
             pm.parent(joint, self.primaryJoints[i - 1])
-            for v in constants.VECTORS:
+            for v in constants.AXES:
                 pm.setAttr("{}.jointOrient{}".format(joint, v), 0)
         else:
-            for v in constants.VECTORS:
+            for v in constants.AXES:
                 pm.setAttr("{}.jointOrient{}".format(joint, v), 0)
             pm.parent(joint, self.primaryJoints[i - 1])
 
