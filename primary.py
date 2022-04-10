@@ -18,7 +18,7 @@ def list_joints_in_chain(joint):
     return jnts
 
 
-# TODO: fix axis flipping that happens with hock joints when orienting.
+# TODO: Orient Tip not working for some reason
 class Build(object):
     def __init__(self, guides_grp, orientation="xyz", invert=False, orient_tip=True, orient_chain_to_world=False):
         self.guidesObj = guides.make_object_from_group(guides_grp)
@@ -35,32 +35,37 @@ class Build(object):
         self.upAxis = self.get_vector_from_axis(self.orientation[1].capitalize())
         self.tertiaryAxis = self.get_vector_from_axis(self.orientation[2].capitalize())
         self.primaryJoints = self.get_primary_joints()
-        self.orient_joints_in_chain()
+        self.longAxis = self.get_long_axis()
+        self.check_rotation(self.primaryJoints)
+        # self.orient_tip_joint(self.primaryJoints[-1], len(self.primaryJoints)-1, self.primaryJoints)
 
-    def check_rotation(self, joints=None):
+    def check_rotation(self, joints=None, long_axis=None):
         if joints is None:
-            joints = self.primaryJoints[1:-1]
+            joints = self.primaryJoints
+        if long_axis is None:
+            long_axis = self.longAxis
         for i, jnt in enumerate(joints[1:-1], 1):
             prevJnt = joints[i - 1]
-            # Get the Worldspace Matrix of the joints
+            # Get the World Space Matrix of the joints
             jntWS = pm.xform(jnt, q=1, m=1, ws=1)
             prevJntWS = pm.xform(prevJnt, q=1, m=1, ws=1)
             # Get Axis Direction (matrix)
             mtxRange = constants.get_axis_matrix_range(self.orientation[-1])
             jntAxis = api.MVector(jntWS[mtxRange[0]:mtxRange[1]])
             prevJntAxis = api.MVector(prevJntWS[mtxRange[0]:mtxRange[1]])
-            # Get Axis direction (range -1.0 - 1.0)
-            axisV = constants.get_axis_vector(self.orientation[-1])
+            # Determine which vector to "look" at the axis from
+            if long_axis == "Z":
+                axisV = constants.get_axis_vector("X")
+            else:
+                axisV = constants.get_axis_vector("Z")
+            # Get Axis direction based on axis vector (range -1.0 - 1.0)
             jntAxisDir = jntAxis * api.MVector(axisV[0], axisV[1], axisV[2])
             prevJntAxisDir = prevJntAxis * api.MVector(axisV[0], axisV[1], axisV[2])
-            # Are axes looking up (is it positive)?
+            # Are axes looking up (is it positive according to the axis vector)?
             jntUp = constants.is_positive(jntAxisDir)
             prevJntUp = constants.is_positive(prevJntAxisDir)
             if not jntUp == prevJntUp:
-                if jntUp and (jntUp - prevJntUp) > .5:
-                    self.fix_rotation(jnt, joints[i - 1], joints[i + 1])
-                if prevJntUp and (prevJntUp - jntUp) > .5:
-                    self.fix_rotation(jnt, joints[i - 1], joints[i + 1])
+                self.fix_rotation(jnt, joints[i - 1], joints[i + 1])
 
     def check_rotation_order(self, node):
         if not self.orientation == (str(node.getRotationOrder()).lower()):
@@ -72,7 +77,7 @@ class Build(object):
         rotAmnt = 180
         rotList[constants.get_axis_index(self.orientation[0])] = rotAmnt
         pm.parent(joint, w=1)
-        if pm.listRelatives(next_jnt, c=1):
+        if pm.listRelatives(joint, c=1):
             pm.parent(next_jnt, w=1)
         pm.xform(joint, ro=rotList, os=1)
         pm.makeIdentity(joint, a=1)
@@ -85,6 +90,9 @@ class Build(object):
             jnts = [jnt for jnt in reversed(pm.listRelatives(self.primaryJointsGrp, ad=1))]
         else:
             jnts = self.make_primary_chain()
+        longAxis = self.get_long_axis(jnts[0])
+        self.orient_joints_in_chain(jnts)
+        self.check_rotation(jnts, longAxis)
         return jnts
 
     def get_joints_grp(self, grp_name, parent=None):
@@ -94,6 +102,23 @@ class Build(object):
         if parent is not None:
             pm.parent(grp, parent)
         return grp
+
+    def get_long_axis(self, joint=None):
+        if joint is None:
+            joint = self.primaryJoints[0]
+        aimWM = pm.xform(joint, q=1, m=1, ws=1)
+        mtrxRange = constants.get_axis_matrix_range(self.orientation[0])
+        aimMtrx = api.MVector(aimWM[mtrxRange[0]:mtrxRange[1]])
+        aimUpX = abs(aimMtrx * api.MVector(1, 0, 0))
+        aimUpY = abs(aimMtrx * api.MVector(0, 1, 0))
+        aimUpZ = abs(aimMtrx * api.MVector(0, 0, 1))
+        aimValue = max([aimUpX, aimUpY, aimUpZ])
+        if aimValue == aimUpX:
+            return "X"
+        elif aimValue == aimUpY:
+            return "Y"
+        else:
+            return "Z"
 
     def get_vector_from_axis(self, axis="X"):
         n = 1
@@ -130,30 +155,35 @@ class Build(object):
         pm.delete(aimConst)
         pm.makeIdentity(joint, apply=True)
 
-    def orient_base_joint(self, joint):
+    def orient_base_joint(self, joint=None, jnt_list=None):
+        if joint is None:
+            joint = self.primaryJoints[0]
+        if jnt_list is None:
+            jnt_list = self.primaryJoints
         if self.orientToWorld:
-            self.orient_joint(joint, self.primaryJoints[1])
+            self.orient_joint(joint, jnt_list[1])
         else:
-            self.orient_joint(joint, self.primaryJoints[1], self.primaryJoints[2])
+            self.orient_joint(joint, jnt_list[1], jnt_list[2])
 
-    def orient_mid_joints(self, joint, i):
+    def orient_mid_joints(self, joint, i, jnt_list=None):
+        if jnt_list is None:
+            jnt_list = self.primaryJoints
         # Center Chains align to World Up
         if self.orientToWorld:
-            self.orient_joint(joint, self.primaryJoints[i + 1])
+            self.orient_joint(joint, jnt_list[i + 1])
         else:
-            self.orient_joint(joint, self.primaryJoints[i + 1], self.primaryJoints[i - 1])
-        pm.parent(joint, self.primaryJoints[i - 1])
+            self.orient_joint(joint, jnt_list[i + 1], jnt_list[i - 1])
+        pm.parent(joint, jnt_list[i - 1])
 
-    def orient_tip_joint(self, joint, i):
+    def orient_tip_joint(self, joint):
+        if pm.listRelatives(joint, c=1):
+            pm.warning("{} is not a tip joint because it has a child")
+            return
         # Orient tip to World or local
         if self.orientTip:
-            pm.parent(joint, self.primaryJoints[i - 1])
-            for v in constants.AXES:
-                pm.setAttr("{}.jointOrient{}".format(joint, v), 0)
+            pm.xform(joint, os=1, ro=(0, 0, 0))
         else:
-            for v in constants.AXES:
-                pm.setAttr("{}.jointOrient{}".format(joint, v), 0)
-            pm.parent(joint, self.primaryJoints[i - 1])
+            pm.xform(joint, ws=1, ro=(0, 0, 0))
 
     def orient_joints_in_chain(self, joints=None):
         if joints is None:
@@ -167,15 +197,15 @@ class Build(object):
         for i, jnt in enumerate(joints):
             # Set orientation for the Base Joint
             if i == 0:
-                self.orient_base_joint(jnt)
+                self.orient_base_joint(jnt, jnt_list=joints)
             # Set orientation for the Tip Joint
             elif i == len(joints) - 1:
-                self.orient_tip_joint(jnt, i)
+                self.orient_tip_joint(jnt)
+                pm.parent(jnt, joints[i - 1])
             # Set orientation for all joints in between
             else:
-                self.orient_mid_joints(jnt, i)
+                self.orient_mid_joints(jnt, i, jnt_list=joints)
         pm.parent(joints[0], self.primaryJointsGrp)
-        self.check_rotation(joints)
 
 
 
