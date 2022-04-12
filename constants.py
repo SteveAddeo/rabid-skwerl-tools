@@ -23,6 +23,20 @@ def get_axis_vector(axis):
     return vectorList
 
 
+def get_constrain_attrs(const_type):
+    if const_type == "parent":
+        attrs = ["_pos", "_rot"]
+    elif const_type == "point":
+        attrs = ["_pos"]
+    elif const_type == "orient":
+        attrs = ["_rot"]
+    elif const_type == "scale":
+        attrs = ["_scl"]
+    else:
+        attrs = ["_pos", "_rot", "_scl"]
+    return attrs
+
+
 def is_positive(n):
     if not n > 0:
         return False

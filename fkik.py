@@ -1,5 +1,39 @@
 import pymel.core as pm
+import constants
 import primary
+
+
+def duplicate_chain(jnt_chain, chain_type, dup_parent):
+    dupJnts = []
+    for jnt in jnt_chain:
+        parent = primary.get_parent_and_children(jnt)[0]
+        children = primary.get_parent_and_children(jnt)[1]
+        # Unparent the joint and any children it may have
+        if parent is not None:
+            pm.parent(jnt, w=1)
+        if children is not None:
+            pm.parent(children, w=1)
+        # Duplicate joint
+        dupName = str(jnt).replace(primary.get_type_from_joint(jnt), chain_type)
+        dup = pm.duplicate(jnt, n=dupName)[0]
+        # Set duplicate joint's radius based on chain type
+        if chain_type == "FK":
+            dupRad = pm.getAttr("{}.radius".format(jnt)) * .65
+        elif chain_type == "IK":
+            dupRad = pm.getAttr("{}.radius".format(jnt)) * 1.6
+        else:
+            dupRad = pm.getAttr("{}.radius".format(jnt))
+        pm.setAttr("{}.radius".format(dup), dupRad)
+        if parent is not None:
+            pm.parent(jnt, parent)
+        if children is not None:
+            pm.parent(children, jnt)
+        if dupJnts:
+            pm.parent(dup, dupJnts[-1])
+        else:
+            pm.parent(dup, dup_parent)
+        dupJnts.append(dup)
+    return dupJnts
 
 
 class BlendColors(object):
@@ -14,12 +48,31 @@ class BlendColors(object):
             self.name = primary.get_name_from_joint(self.driven)
         self.blendColors = self.get_blend_colors()
 
+    def check_connections(self, bc_nodes):
+        for node in bc_nodes:
+            if str(node).split("_")[-2] == "pos":
+                attr = "translate"
+            elif str(node).split("_")[-2] == "rot":
+                attr = "rotate"
+            else:
+                attr = "scale"
+            print(node, attr)
+            print(self.drivers[0], type(self.drivers[0]))
+            if not pm.isConnected("{}.{}".format(self.drivers[0], attr), "{}.color1".format(node)):
+                print("{}.{} not connected".format(str(self.drivers[0]), attr))
+                pm.connectAttr("{}.{}".format(self.drivers[0], attr), "{}.color1".format(node))
+            if len(self.drivers) > 1:
+                if not pm.isConnected("{}.{}".format(self.drivers[1], attr), "{}.color2".format(node)):
+                    pm.connectAttr("{}.{}".format(self.drivers[1], attr), "{}.color2".format(node))
+            if not pm.isConnected("{}.output".format(node), "{}.{}".format(str(self.driven), attr)):
+                pm.connectAttr("{}.output".format(node), "{}.{}".format(self.driven, attr))
+
     def get_blend_colors(self):
         bcNodeList = []
-        for attr in self.get_constrain_attrs():
+        for attr in constants.get_constrain_attrs(self.constType):
             # Create a Blend Colors node (if one doesn't already exist)
             bcName = "{}{}_bc".format(self.name, attr)
-            if bcName in pm.ls():
+            if pm.ls(bcName):
                 bcNodeList.append(pm.ls(bcName)[0])
                 continue
             bcNode = pm.createNode("blendColors", n=bcName)
@@ -28,20 +81,8 @@ class BlendColors(object):
             pm.setAttr("{}.color2".format(bcName), 0, 0, 0)
             # Add node to list of blend colors
             bcNodeList.append(bcNode)
+        self.check_connections(bcNodeList)
         return bcNodeList
-
-    def get_constrain_attrs(self):
-        if self.constType == "parent":
-            attrs = ["_pos", "_rot"]
-        elif self.constType == "point":
-            attrs = ["_pos"]
-        elif self.constType == "orient":
-            attrs = ["_rot"]
-        elif self.constType == "scale":
-            attrs = ["_scl"]
-        else:
-            attrs = ["_pos", "_rot", "_scl"]
-        return attrs
 
     def get_driver_driven(self):
         # Check to make sure at least two objects are selected
@@ -55,30 +96,71 @@ class BlendColors(object):
             pm.warning("more than two drivers were selected; only the first two are used")
         self.drivers = drivers[0:2]
 
-    def make_connections(self, bc_nodes):
-        for node in bc_nodes:
-            if str(node).split("_")[-2] == "pos":
-                attr = "translate"
-            elif str(node).split("_")[-2] == "rot":
-                attr = "rotate"
-            else:
-                attr = "scale"
-            pm.connectAttr("{}.{}".format(self.drivers[0], attr), "{}.color1".format(node))
-            if len(self.drivers) > 1:
-                pm.connectAttr("{}.{}".format(self.drivers[1], attr), "{}.color2".format(node))
-            pm.connectAttr("{}.output".format(node), "{}.{}".format(self.driven, attr))
+
+class FK(object):
+    def __init__(self, prime_obj, ctls_obj, joint_chain):
+        self.primeObj = prime_obj
+        self.ctlsObj = ctls_obj
+        self.jointChain = joint_chain
 
 
+class IK(object):
+    def __init__(self, prime_obj, ctls_obj, joint_chain, spline=False):
+        self.primeObj = prime_obj
+        self.ctlsObj = ctls_obj
+        self.jntChain = joint_chain
+        self.spline = spline
+        self.handles = self.get_handles()
+        self.poleVectors = self.get_pole_vectors()
+
+    def get_handles(self):
+        return "handles"
+
+    def get_pole_vectors(self):
+        return "poleVectors"
+
+    def make_ik_system(self):
+        if len(self.jntChain) == 2:
+            #
+            pass
+        elif len(self.jntChain) == 3 and not self.spline:
+            pass
+        elif len(self.jntChain) == 4 and not self.spline:
+            pass
+        else:
+            pass
+
+    def make_ik_driver(self):
+        pass
+
+    def make_ik_end(self, ik_chain):
+        jnt = ik_chain[-1]
+        dupName = str(jnt).replace("_IK_", "_end_IK_")
+        dup = pm.duplicate(jnt, n=dupName)[0]
+        pm.parent(dup, jnt)
+        offsetAmnt = self.primeObj.guidesObj.scale * .05
+        pm.setAttr("{}.translateX".format(dup), offsetAmnt)
+        return dup
+
+
+# TODO: controls_obj should be dropped in here as well. The object-oriented nature of this will allow
+#  data to be queried more easily
 class Build(object):
-    def __init__(self, name=None, primary_joint=None):
-        if primary_joint is None:
-            primary_joint = self.get_joint_primary()
-        if name is None:
-            name = primary.get_name_from_joint(primary_joint)
-        self.name = name
-        self.primaryChain = primary.list_joints_in_chain(primary_joint)
-        self.fkChainGrp = self.get_chain_grp(chain_type="FK")
-        self.ikChainGrp = self.get_chain_grp(chain_type="IK")
+    def __init__(self, primary_obj, start_jnt=None, chain_len=3, fk=True, ik=True, ik_spline=False):
+        if not fk and not ik:
+            return
+        self.primeObj = primary_obj
+        self.startJoint = start_jnt
+        if self.startJoint is None:
+            self.startJoint = self.primeObj.primaryJoints[0]
+        self.chainLen = chain_len
+        self.fk = fk
+        self.ik = ik
+        self.ikSpline = ik_spline
+        self.name = self.primeObj.name
+        self.primaryChain = self.get_chain_primary()
+        self.fkJointsGrp = self.get_chain_grp(chain_type="FK")
+        self.ikJointsGrp = self.get_chain_grp(chain_type="IK")
         self.fkChain = self.get_chain(chain_type="FK")
         self.ikChain = self.get_chain(chain_type="IK")
         self.blendColors = self.get_blend_colors()
@@ -87,83 +169,74 @@ class Build(object):
         self.ikPoleVectorLocList = None
         self.fkPoleVectorProxyList = None
 
+    def check_chain_type(self, chain_type="FK"):
+        if not self.fk and chain_type == "FK":
+            return False
+        if not self.ik and chain_type == "IK":
+            return False
+        return True
+
     def get_blend_colors(self):
+        if not self.fk and not self.ik:
+            return None
         bcDict = {}
         for i, jnt in enumerate(self.primaryChain):
-            fkik = BlendColors(self.name, [self.fkChain[i], self.ikChain[i]], jnt)
+            drivers = []
+            if self.fk:
+                print("FK driver is {}".format(self.fkChain[i]), type(self.fkChain[i]))
+                drivers.append(self.fkChain[i])
+            if self.ik:
+                print("IK driver is {}".format(self.ikChain[i]), type(self.ikChain[i]))
+                drivers.append(self.ikChain[i])
+            fkik = BlendColors(drivers=drivers, driven=jnt)
+            print("{} built".format(fkik))
             bcDict[str(jnt)] = fkik.blendColors
         return bcDict
 
     def get_chain(self, chain_type="FK"):
+        if not self.check_chain_type(chain_type):
+            return None
         # Set chain's naming convention
-        if "primary" in str(self.primaryChain):
-            name = str(self.primaryChain).replace("primary", chain_type)
-        elif "_jnt" in str(self.primaryChain):
-            name = str(self.primaryChain).replace("jnt", "{}_jnt".format(chain_type))
-        else:
-            name = "{}_{}_jnt".format(str(self.primaryChain), chain_type)
-        if name not in pm.ls():
-            return self.make_chain(name, chain_type)
-        return pm.ls(name)[0]
+        name = "{}_{}_jnt".format(self.name, chain_type)
+        if not pm.ls(name):
+            return self.make_chain(chain_type)
+        return primary.list_joints_in_chain(name)
 
     def get_chain_grp(self, chain_type="FK"):
+        if not self.check_chain_type(chain_type):
+            return None
         grpName = "{}_{}_jnts_grp".format(self.name, chain_type)
-        if grpName in pm.ls():
+        if pm.ls(grpName):
             return pm.ls(grpName)[0]
         grp = pm.group(em=1, n=grpName)
-        parent = pm.listRelatives("{}_primary_jnts_grp".format(self.name), p=1)[0]
+        parent = self.primeObj.subJointsGrp
         pm.parent(grp, parent)
         return grp
+
+    def get_chain_primary(self):
+        jntIndex = self.primeObj.primaryJoints.index(self.startJoint)
+        chainEnd = jntIndex + self.chainLen
+        return self.primeObj.primaryJoints[jntIndex:chainEnd]
 
     def get_joint_primary(self):
         if "{}_primary_jnts_grp".format(self.name) not in pm.ls():
             return pm.error("{} primary joint chain does not exist".format(self.name))
-        return pm.listRelatives("{}_primary_jnts_grp".format(self.name), c=1)[0]
+        return pm.listRelatives("{}_prime_jnts_grp".format(self.name), c=1)[0]
 
-    def make_chain(self, name, chain_type="FK"):
-        # Duplicate primary chain to create new chain
-        newChain = pm.duplicate(self.primaryChain[0], n=name)
-        # Parent chain to the group
+    def make_chain(self, chain_type="FK"):
+        if not self.check_chain_type(chain_type):
+            return None
         if chain_type == "FK":
-            parent = self.fkChainGrp
+            parent = self.fkJointsGrp
         else:
-            parent = self.ikChainGrp
-        pm.parent(newChain, parent)
-        return self.rename_joints(primary.list_joints_in_chain(newChain), chain_type)
-
-    def rename_joints(self, joints, chain_type):
-        for jnt in joints:
-            if "primary" in str(jnt):
-                newName = str(jnt).replace("primary", chain_type)
-                pm.rename(jnt, newName)
-            if "_{}_".format(chain_type) not in str(jnt):
-                newName = "{}_{}".format(str(jnt), chain_type)
-                pm.rename(jnt, newName)
-        return joints
+            parent = self.ikJointsGrp
+        newChain = duplicate_chain(self.primaryChain, chain_type, parent)
+        # TODO: this may be the job of an IK class
+        if chain_type == "IK" and "_end_IK_" not in str(newChain[-1]):
+            endJnt = self.make_ik_end(newChain)
+            newChain.append(endJnt)
+        return newChain
 
 
-def make_fkik(chains=None):
-    fkikDict = {}
-    # Get list of joint chains to create FKIK blends
-    if chains is None:
-        if not pm.ls(sl=1):
-            return pm.error("Please select a joint chain")
-        chains = pm.ls(sl=1)
-    for driver in chains:
-        # Make the FK and IK chains
-        fkChain = make_chain(driver, "FK")
-        ikChain = make_chain(driver, "IK")
-        # Make a dict of joints in chain with the value being a list of the corresponding FK and IK joints
-        jntsDict = {driver: {"FK": fkChain[-1], "IK": ikChain[-1]}}
-        if pm.listRelatives(driver, ad=1):
-            for i, child in enumerate(pm.listRelatives(driver, ad=1)):
-                jntsDict[child] = {"FK": fkChain[i], "IK": ikChain[i]}
-        # Create the blend shapes and connections
-        for jnt in jntsDict:
-            jntbc = BlendColors(drivers=[jntsDict[jnt]["FK"], jntsDict[jnt]["IK"]], driven=jnt)
-            bcNodes = jntbc.make_constraint("parent")
-            jntsDict[jnt]["blendColors"] = bcNodes
-        # Add jntsDict to fkikDict
-        fkikDict[str(driver).split("_")[0]] = jntsDict
-    return fkikDict
+
 

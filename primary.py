@@ -1,15 +1,30 @@
 import pymel.core as pm
 import maya.api.OpenMaya as api
 import constants
-import guides
 
 
 def get_name_from_joint(joint):
-    if "_primary_jnt" in str(joint):
+    if "_prime_jnt" in str(joint):
         return str(joint).replace("_primary_jnt", "")
     if "_jnt" in str(joint):
         return str(joint).replace("_jnt", "")
     return str(joint)
+
+
+def get_parent_and_children(joint):
+    if pm.listRelatives(joint, p=1):
+        parent = pm.listRelatives(joint, p=1)[0]
+    else:
+        parent = None
+    if pm.listRelatives(joint, c=1):
+        children = pm.listRelatives(joint, c=1)
+    else:
+        children = None
+    return [parent, children]
+
+
+def get_type_from_joint(joint):
+    return str(joint).split("_")[-2]
 
 
 def list_joints_in_chain(joint):
@@ -18,10 +33,9 @@ def list_joints_in_chain(joint):
     return jnts
 
 
-# TODO: Orient Tip not working for some reason
 class Build(object):
-    def __init__(self, guides_grp, orientation="xyz", invert=False, orient_tip=True, orient_chain_to_world=False):
-        self.guidesObj = guides.make_object_from_group(guides_grp)
+    def __init__(self, guides_obj, orientation="xyz", invert=False, orient_tip=True, orient_chain_to_world=False):
+        self.guidesObj = guides_obj
         self.name = self.guidesObj.name
         self.guides = self.guidesObj.allGuides
         self.orientation = orientation
@@ -30,14 +44,13 @@ class Build(object):
         self.orientToWorld = orient_chain_to_world
         self.mainJointsGrp = self.get_joints_grp("jnts_grp")
         self.subJointsGrp = self.get_joints_grp("{}_jnts_grp".format(self.name), parent=self.mainJointsGrp)
-        self.primaryJointsGrp = self.get_joints_grp("{}_primary_jnts_grp".format(self.name), parent=self.subJointsGrp)
+        self.primaryJointsGrp = self.get_joints_grp("{}_prime_jnts_grp".format(self.name), parent=self.subJointsGrp)
         self.aimAxis = self.get_vector_from_axis(self.orientation[0].capitalize())
         self.upAxis = self.get_vector_from_axis(self.orientation[1].capitalize())
         self.tertiaryAxis = self.get_vector_from_axis(self.orientation[2].capitalize())
         self.primaryJoints = self.get_primary_joints()
         self.longAxis = self.get_long_axis()
         self.check_rotation(self.primaryJoints)
-        # self.orient_tip_joint(self.primaryJoints[-1], len(self.primaryJoints)-1, self.primaryJoints)
 
     def check_rotation(self, joints=None, long_axis=None):
         if joints is None:
@@ -141,9 +154,10 @@ class Build(object):
         # Create a joint for each guide
         jntList = []
         for guide in self.guides:
-            jntName = str(guide).replace("_guide", "_primary_jnt")
+            jntName = str(guide).replace("_guide", "_prime_jnt")
             jntPos = pm.xform(guide, q=1, ws=1, rp=1)
-            jnt = pm.joint(n=jntName, p=jntPos, roo=self.orientation)
+            jntRad = self.guidesObj.scale * .1
+            jnt = pm.joint(n=jntName, p=jntPos, roo=self.orientation, rad=jntRad)
             jntList.append(jnt)
         return jntList
 
@@ -153,7 +167,7 @@ class Build(object):
         else:
             aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimAxis, u=self.upAxis, wut="object", wuo=up_obj)
         pm.delete(aimConst)
-        pm.makeIdentity(joint, apply=True)
+        pm.makeIdentity(joint, a=1)
 
     def orient_base_joint(self, joint=None, jnt_list=None):
         if joint is None:
@@ -175,15 +189,23 @@ class Build(object):
             self.orient_joint(joint, jnt_list[i + 1], jnt_list[i - 1])
         pm.parent(joint, jnt_list[i - 1])
 
-    def orient_tip_joint(self, joint):
+    def orient_tip_joint(self, joint, prev_jnt=None):
         if pm.listRelatives(joint, c=1):
             pm.warning("{} is not a tip joint because it has a child")
             return
+        if prev_jnt is None:
+            prev_jnt = self.primaryJoints[-2]
+        if pm.listRelatives(joint, p=1):
+            pm.parent(joint, w=1)
         # Orient tip to World or local
         if self.orientTip:
-            pm.xform(joint, os=1, ro=(0, 0, 0))
+            pm.parent(joint, prev_jnt)
+            for axis in constants.AXES:
+                pm.setAttr("foo_tip_prime_jnt.jointOrient{}".format(axis), 0)
         else:
             pm.xform(joint, ws=1, ro=(0, 0, 0))
+            pm.makeIdentity(joint, a=1)
+            pm.parent(joint, prev_jnt)
 
     def orient_joints_in_chain(self, joints=None):
         if joints is None:
@@ -200,8 +222,7 @@ class Build(object):
                 self.orient_base_joint(jnt, jnt_list=joints)
             # Set orientation for the Tip Joint
             elif i == len(joints) - 1:
-                self.orient_tip_joint(jnt)
-                pm.parent(jnt, joints[i - 1])
+                self.orient_tip_joint(jnt, joints[i - 1])
             # Set orientation for all joints in between
             else:
                 self.orient_mid_joints(jnt, i, jnt_list=joints)
