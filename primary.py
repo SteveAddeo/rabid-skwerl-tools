@@ -1,6 +1,6 @@
 import pymel.core as pm
 import maya.api.OpenMaya as api
-import constants
+from core import constants
 
 
 def get_name_from_joint(joint):

@@ -1,5 +1,5 @@
 import pymel.core as pm
-import constants
+from core import constants
 import primary
 
 
@@ -231,10 +231,6 @@ class Build(object):
         else:
             parent = self.ikJointsGrp
         newChain = duplicate_chain(self.primaryChain, chain_type, parent)
-        # TODO: this may be the job of an IK class
-        if chain_type == "IK" and "_end_IK_" not in str(newChain[-1]):
-            endJnt = self.make_ik_end(newChain)
-            newChain.append(endJnt)
         return newChain
 
 

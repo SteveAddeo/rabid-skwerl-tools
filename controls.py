@@ -1,0 +1,1 @@
+# Sphere scale = guides.scale * .2
