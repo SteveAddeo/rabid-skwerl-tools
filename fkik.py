@@ -56,16 +56,15 @@ class BlendColors(object):
                 attr = "rotate"
             else:
                 attr = "scale"
-            print(node, attr)
-            print(self.drivers[0], type(self.drivers[0]))
             if not pm.isConnected("{}.{}".format(self.drivers[0], attr), "{}.color1".format(node)):
-                print("{}.{} not connected".format(str(self.drivers[0]), attr))
                 pm.connectAttr("{}.{}".format(self.drivers[0], attr), "{}.color1".format(node))
+            if not pm.isConnected("{}.output".format(node), "{}.{}".format(str(self.driven), attr)):
+                pm.connectAttr("{}.output".format(node), "{}.{}".format(self.driven, attr))
             if len(self.drivers) > 1:
                 if not pm.isConnected("{}.{}".format(self.drivers[1], attr), "{}.color2".format(node)):
                     pm.connectAttr("{}.{}".format(self.drivers[1], attr), "{}.color2".format(node))
-            if not pm.isConnected("{}.output".format(node), "{}.{}".format(str(self.driven), attr)):
-                pm.connectAttr("{}.output".format(node), "{}.{}".format(self.driven, attr))
+            else:
+                pm.setAttr("{}.blender".format(node), 1)
 
     def get_blend_colors(self):
         bcNodeList = []
