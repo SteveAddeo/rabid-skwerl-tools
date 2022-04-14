@@ -37,7 +37,7 @@ def make_offset_groups(name=None):
     return offsetGrps
 
 
-def parent_crv(nodes=None):
+def parent_crv(name=None, nodes=None):
     if nodes is None:
         nodes = pm.ls(sl=1)
     if not nodes:
@@ -45,15 +45,20 @@ def parent_crv(nodes=None):
     # Create an empty group to act as the parents for your curves
     transform = pm.group(em=1)
     # Get the name of the curve
-    name = str(nodes[-1])
+    if name is None:
+        name = str(nodes[-1])
+    # Get position and pivot data
     mtrx = nodes[-1].getMatrix()
+    piv = pm.xform(nodes[-1], q=1, rp=1)
+    pm.xform(transform, piv=piv)
     # Parent each curveShape to the new transform node
     for curve in nodes:
         if not pm.nodeType(curve) == "nurbsCurve":
             curve = curve.getShape()
-        parent = pm.listRelatives(curve, p=1)[0]
+        parent = pm.listRelatives(curve, p=1)
         pm.parent(curve, transform, r=1, s=1)
-        pm.delete(parent)
+        if parent:
+            pm.delete(parent)
     # Freeze transforms (requires an extra step for Maya versions over 2020)
     if int(pm.about(v=1)) >= 2020:
         # This stores the transforms in the offset parent matrix
@@ -62,4 +67,5 @@ def parent_crv(nodes=None):
     pm.makeIdentity(transform, a=1, n=2)
     pm.rename(transform, name)
     pm.select(transform)
+    return transform
 

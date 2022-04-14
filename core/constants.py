@@ -1,6 +1,7 @@
 AXES = ["X", "Y", "Z"]
 FROZENMTRX = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
 
+
 def get_axis_index(axis):
     for i, a in enumerate(AXES):
         if a == axis.upper():
