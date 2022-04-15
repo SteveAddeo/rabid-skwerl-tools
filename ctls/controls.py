@@ -16,6 +16,23 @@ def make_circle(name=None, scale=10, aim="X"):
     return ctl
 
 
+def make_cog(name=None, scale=10, aim="Y"):
+    if name is None:
+        name = "cog_ctl"
+    ctl = make_shape(name, scale, "COG")
+    if aim == "X":
+        pm.xform(ctl, ro=[0, 0, 90])
+    if aim == "Z":
+        pm.xform(ctl, ro=[90, 0, 0])
+    pm.makeIdentity(ctl, a=1)
+    return ctl
+
+
+def make_cube(name=None, scale=10):
+    ctl = make_shape(name, scale, "Cube")
+    return ctl
+
+
 def make_gimbal(name=None, scale=10, aim="X", angle="Z", invert=False):
     if name is None:
         name = "gimbal_ctl1"
@@ -43,6 +60,11 @@ def make_pin(name=None, scale=10, aim="X", up="Y", invert=False):
     curve = pm.curve(d=1, p=([0, 0, 0], [item * length for item in upAxis]))
     circle = pm.circle(c=center, nr=aimAxis, r=radius)[0]
     ctl = utils.parent_crv(name, [circle, curve])
+    return ctl
+
+
+def make_rhombus(name=None, scale=10):
+    ctl = make_shape(name, scale, "Rombus")
     return ctl
 
 
@@ -93,4 +115,18 @@ def make_square(name=None, scale=10, aim="X"):
     ptVector = [v * (scale * .3) for v in vector]
     ctl = pm.curve(n=name, d=1, p=[ptVector, [-v if i == indexes[0] else v for i, v in enumerate(ptVector)], [
         -v for v in ptVector], [-v if i == indexes[1] else v for i, v in enumerate(ptVector)], ptVector])
+    return ctl
+
+
+def make_trs(name=None, scale=10, aim="Y"):
+    if name is None:
+        name = "trs_ctl"
+    outer = make_shape("TRSouter", scale, "TRS")
+    circle = pm.circle(n="TRSinner", nr=[0, 1, 0], r=1.9 * scale)[0]
+    ctl = utils.parent_crv(name, [circle, outer])
+    if aim == "X":
+        pm.xform(ctl, ro=[0, 0, 90])
+    if aim == "Z":
+        pm.xform(ctl, ro=[90, 0, 0])
+    pm.makeIdentity(ctl, a=1)
     return ctl
