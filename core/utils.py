@@ -1,5 +1,18 @@
+import os
+import json
 import pymel.core as pm
 from core import matrix
+
+
+ENVPATH = os.environ["MAYA_APP_DIR"]
+SETUPPATH = os.path.join(ENVPATH, pm.about(v=1), "scripts")
+RSTPATH = os.path.join(ENVPATH, pm.about(v=1), "prefs", "scripts")
+
+
+def get_data_from_json(file_path):
+    with open(file_path) as file:
+        data = json.load(file)
+    return data
 
 
 def freeze_transforms(nodes=None):
@@ -68,4 +81,9 @@ def parent_crv(name=None, nodes=None):
     pm.rename(transform, name)
     pm.select(transform)
     return transform
+
+
+def write_data_to_json(file_path, data):
+    with open(file_path, "w") as file:
+        json.dump(data, file, indent=2)
 
