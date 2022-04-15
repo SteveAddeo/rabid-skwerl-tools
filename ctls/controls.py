@@ -64,7 +64,7 @@ def make_pin(name=None, scale=10, aim="X", up="Y", invert=False):
 
 
 def make_rhombus(name=None, scale=10):
-    ctl = make_shape(name, scale, "Rombus")
+    ctl = make_shape(name, scale, "Rhombus")
     return ctl
 
 
