@@ -46,10 +46,10 @@ def make_pin(name=None, scale=10, aim="X", up="Y", invert=False):
     return ctl
 
 
-def make_rombus(name=None, scale=10):
+def make_shape(name=None, scale=10, shape="Cube"):
     if name is None:
-        name = "rombus_ctl1"
-    points = SHAPES["Rombus"]
+        name = "{}_ctl1".format(shape.lower())
+    points = SHAPES[shape]
     ptsScaled = []
     for point in points:
         ptsScaled.append([axis * scale for axis in point])
@@ -69,13 +69,7 @@ def make_sphere(name=None, scale=10):
 
 
 def make_spline(name=None, scale=10, aim="X", up="Y", invert=False):
-    if name is None:
-        name = "spline_ctl1"
-    points = SHAPES["Spline"]
-    ptsScaled = []
-    for point in points:
-        ptsScaled.append([axis * scale for axis in point])
-    ctl = pm.curve(n=name, d=1, p=ptsScaled)
+    ctl = make_shape(name, scale, "Spline")
     rotation = [0, 0, 0]
     if up == "X" or aim == "Y":
         rotation[2] = -90
