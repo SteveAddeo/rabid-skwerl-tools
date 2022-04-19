@@ -7,7 +7,20 @@ from core import utils
 SHAPES = utils.get_data_from_json(os.path.join(utils.RSTPATH, "rabid-skwerl-tools", "ctls", "shapes.json"))
 
 
-def make_circle(name=None, scale=10, aim="X"):
+def make_shape(name=None, scale=10.0, shape="Cube", rot90=False, mirror_x=False):
+    if name is None:
+        name = "{}_ctl1".format(shape.lower())
+    points = SHAPES[shape]
+    if mirror_x:
+        points = [[-axis for axis in point] for point in points]
+    if rot90:
+        points = [[point[2], point[1], point[0]] for point in points]
+    ptsScaled = [[axis * scale for axis in point] for point in points]
+    ctl = pm.curve(n=name, d=1, p=ptsScaled)
+    return ctl
+
+
+def make_circle(name=None, scale=10.0, aim="X"):
     if name is None:
         name = "circle_ctl1"
     aimAxis = constants.get_axis_vector(aim)
@@ -16,9 +29,7 @@ def make_circle(name=None, scale=10, aim="X"):
     return ctl
 
 
-def make_cog(name=None, scale=10, aim="Y"):
-    if name is None:
-        name = "cog_ctl"
+def make_cog(name=None, scale=10.0, aim="Y"):
     ctl = make_shape(name, scale, "COG")
     if aim == "X":
         pm.xform(ctl, ro=[0, 0, 90])
@@ -28,12 +39,20 @@ def make_cog(name=None, scale=10, aim="Y"):
     return ctl
 
 
-def make_cube(name=None, scale=10):
-    ctl = make_shape(name, scale, "Cube")
+def make_cube(name=None, scale=10.0, aim="X", mirror=True):
+    if mirror:
+        ctl = make_shape(name, scale, "Cube", mirror_x=True)
+    else:
+        ctl = make_shape(name, scale, "Cube")
+    if aim == "Y":
+        pm.xform(ctl, ro=[0, 0, 90])
+    if aim == "Z":
+        pm.xform(ctl, ro=[0, -90, 0])
+    pm.makeIdentity(ctl, a=1)
     return ctl
 
 
-def make_gimbal(name=None, scale=10, aim="X", angle="Z", invert=False):
+def make_gimbal(name=None, scale=10.0, aim="X", angle="Z", invert=False):
     if name is None:
         name = "gimbal_ctl1"
     aimAxis = constants.get_axis_vector(aim)
@@ -47,7 +66,26 @@ def make_gimbal(name=None, scale=10, aim="X", angle="Z", invert=False):
     return ctl
 
 
-def make_pin(name=None, scale=10, aim="X", up="Y", invert=False):
+def make_icon(name=None, icon_type="FK", scale=10.0, aim="Z"):
+    if name is None:
+        name = "{}_dsp1".format(icon_type.lower())
+    if icon_type == "IK":
+        fi = make_shape("i", scale, "I")
+    else:
+        fi = make_shape("f", scale, "F")
+    k = make_shape("k", scale, "K")
+    icon = utils.parent_crv(name, [k, fi])
+    pm.xform(icon, cp=1)
+    pm.move(icon, [0, 0, 0], rpr=1)
+    if aim == "X":
+        pm.xform(icon, ro=[0, 90, 0])
+    if aim == "Y":
+        pm.xform(icon, ro=[0, 0, 90])
+    pm.makeIdentity(icon, a=1)
+    return icon
+
+
+def make_pin(name=None, scale=10.0, aim="X", up="Y", invert=False):
     if name is None:
         name = "gimbal_ctl1"
     aimAxis = constants.get_axis_vector(aim)
@@ -63,23 +101,12 @@ def make_pin(name=None, scale=10, aim="X", up="Y", invert=False):
     return ctl
 
 
-def make_rhombus(name=None, scale=10):
+def make_rhombus(name=None, scale=10.0):
     ctl = make_shape(name, scale, "Rhombus")
     return ctl
 
 
-def make_shape(name=None, scale=10, shape="Cube"):
-    if name is None:
-        name = "{}_ctl1".format(shape.lower())
-    points = SHAPES[shape]
-    ptsScaled = []
-    for point in points:
-        ptsScaled.append([axis * scale for axis in point])
-    ctl = pm.curve(n=name, d=1, p=ptsScaled)
-    return ctl
-
-
-def make_sphere(name=None, scale=10):
+def make_sphere(name=None, scale=10.0):
     if name is None:
         name = "sphere_ctl1"
     radius = scale * .2
@@ -90,7 +117,7 @@ def make_sphere(name=None, scale=10):
     return ctl
 
 
-def make_spline(name=None, scale=10, aim="X", up="Y", invert=False):
+def make_spline(name=None, scale=10.0, aim="X", up="Y", invert=False):
     ctl = make_shape(name, scale, "Spline")
     rotation = [0, 0, 0]
     if up == "X" or aim == "Y":
@@ -106,7 +133,7 @@ def make_spline(name=None, scale=10, aim="X", up="Y", invert=False):
     return ctl
 
 
-def make_square(name=None, scale=10, aim="X"):
+def make_square(name=None, scale=10.0, aim="X"):
     if name is None:
         name = "square_ctl1"
     vector = [1, 1, 1]
@@ -118,15 +145,48 @@ def make_square(name=None, scale=10, aim="X"):
     return ctl
 
 
-def make_trs(name=None, scale=10, aim="Y"):
+def make_trs(name=None, scale=10.0, aim="Y"):
     if name is None:
         name = "trs_ctl"
-    outer = make_shape("TRSouter", scale, "TRS")
-    circle = pm.circle(n="TRSinner", nr=[0, 1, 0], r=1.9 * scale)[0]
-    ctl = utils.parent_crv(name, [circle, outer])
+    outer = make_shape("trs_outerRing", scale, "TRS")
+    circle = pm.circle(n="trs_innerRing", nr=[0, 1, 0], r=1.9 * scale)[0]
+    lt = make_shape("trs_ltArrow", scale, "TRS Arrow")
+    rt = make_shape("trs_rtArrow", scale, "TRS Arrow", mirror_x=True)
+    up = make_shape("trs_upArrow", scale, "TRS Arrow", rot90=True)
+    dn = make_shape("trs_dnArrow", scale, "TRS Arrow", rot90=True, mirror_x=True)
+    ctl = utils.parent_crv(name, [circle, lt, rt, up, dn, outer])
     if aim == "X":
         pm.xform(ctl, ro=[0, 0, 90])
     if aim == "Z":
         pm.xform(ctl, ro=[90, 0, 0])
     pm.makeIdentity(ctl, a=1)
     return ctl
+
+
+def make_fkik(name=None, scale=10.0, aim="Z"):
+    if name is None:
+        name = "fkik_ctl1"
+    fk = make_icon("{}_fk".format(name.split("_")[0]), icon_type="FK", scale=(scale * .3), aim=aim)
+    ik = make_icon("{}_ik".format(name.split("_")[0]), icon_type="IK", scale=(scale * .3), aim=aim)
+    fkShapes = fk.getShapes()
+    ikShapes = ik.getShapes()
+    box = make_shape("{}_ik".format(name.split("_")[0]), scale=(scale * .3), shape="FKIK Box")
+    if aim == "X":
+        i = 1
+        pm.xform(box, ro=[0, 90, 0])
+        pm.makeIdentity(box, a=1)
+    elif aim == "Y":
+        i = 2
+        pm.xform(box, ro=[90, 0, 0])
+        pm.makeIdentity(box, a=1)
+    else:
+        i = 1
+    lineBase = [0, 0, 0]
+    lineTip = [0, 0, 0]
+    lineBase[i] = scale * -.13423841468
+    lineTip[i] = scale * -.3
+    line = pm.curve(n="line", d=1, p=[lineBase, lineTip])
+    lineShapes = line.getShapes()
+    ctl = utils.parent_crv(name, [line, fk, ik, box])
+    return [ctl, fkShapes, ikShapes, lineShapes]
+

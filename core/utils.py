@@ -56,7 +56,7 @@ def parent_crv(name=None, nodes=None):
     if not nodes:
         pm.error("Nothing Selected")
     # Create an empty group to act as the parents for your curves
-    transform = pm.group(em=1)
+    transform = pm.group(n=name, em=1)
     # Get the name of the curve
     if name is None:
         name = str(nodes[-1])
@@ -65,11 +65,13 @@ def parent_crv(name=None, nodes=None):
     piv = pm.xform(nodes[-1], q=1, rp=1)
     pm.xform(transform, piv=piv)
     # Parent each curveShape to the new transform node
-    for curve in nodes:
-        if not pm.nodeType(curve) == "nurbsCurve":
-            curve = curve.getShape()
-        parent = pm.listRelatives(curve, p=1)
-        pm.parent(curve, transform, r=1, s=1)
+    for curves in nodes:
+        if not pm.nodeType(curves) == "nurbsCurve":
+            curves = curves.getShapes()
+        parent = pm.listRelatives(curves, p=1)
+        if type(curves) == list:
+            for curve in curves:
+                pm.parent(curve, transform, r=1, s=1)
         if parent:
             pm.delete(parent)
     # Freeze transforms (requires an extra step for Maya versions over 2020)
@@ -78,7 +80,6 @@ def parent_crv(name=None, nodes=None):
         pm.setAttr("{}.offsetParentMatrix".format(str(transform)), mtrx)
         pm.xform(transform, ws=1, m=mtrx)
     pm.makeIdentity(transform, a=1, n=2)
-    pm.rename(transform, name)
     pm.select(transform)
     return transform
 
