@@ -39,17 +39,27 @@ def make_cog(name=None, scale=10.0, aim="Y"):
     return ctl
 
 
-def make_cube(name=None, scale=10.0, aim="X", mirror=True):
-    if mirror:
-        ctl = make_shape(name, scale, "Cube", mirror_x=True)
-    else:
-        ctl = make_shape(name, scale, "Cube")
+def make_cube(name=None, scale=10.0, length=None, aim="X", mirror=False):
+    ctl = make_shape(name, scale, "Cube", mirror_x=mirror)
     if aim == "Y":
         pm.xform(ctl, ro=[0, 0, 90])
     if aim == "Z":
         pm.xform(ctl, ro=[0, -90, 0])
+    if length is not None:
+        resize_cube(ctl, length, aim)
     pm.makeIdentity(ctl, a=1)
     return ctl
+
+
+def resize_cube(cube, length, aim="X"):
+    cvList = ["{}.cv[{}]".format(str(cube), i) for i in range(
+        pm.getAttr("{}.spans".format(cube)) + 1) if i in [0, 1, 4, 5, 8, 9, 10, 13]]
+    for i, cv in enumerate(cvList):
+        offset = pm.xform(cv, ws=1, t=1, q=1)
+        if i == 0 and offset[constants.get_axis_index(aim)] < 0:
+            length = -length
+        offset[constants.get_axis_index(aim)] = length
+        pm.xform(cv, ws=1, t=offset)
 
 
 def make_gimbal(name=None, scale=10.0, aim="X", angle="Z", invert=False):
@@ -189,4 +199,8 @@ def make_fkik(name=None, scale=10.0, aim="Z"):
     lineShapes = line.getShapes()
     ctl = utils.parent_crv(name, [line, fk, ik, box])
     return [ctl, fkShapes, ikShapes, lineShapes]
+
+
+
+
 

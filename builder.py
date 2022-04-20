@@ -2,7 +2,8 @@
 import pymel.core as pm
 
 # Skwerl
-import primary
+from jnts import primary
+
 
 def build_rig():
     if "guides_grp" not in pm.ls():

@@ -1,7 +1,3 @@
-import pymel.core as pm
-import primary
-
-
 def duplicate_joints_from_chain(joints):
     # can be used to make IK and FK joints as well as stretch joints
     pass

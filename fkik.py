@@ -1,6 +1,6 @@
 import pymel.core as pm
 from core import constants
-import primary
+from jnts import primary
 
 
 def duplicate_chain(jnt_chain, chain_type, dup_parent):

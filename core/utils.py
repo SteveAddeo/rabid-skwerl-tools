@@ -38,7 +38,7 @@ def make_offset_groups(name=None):
         pm.warning("Nothing Selected")
         return None
     for node in pm.ls(sl=1):
-        if not pm.nodeType(node) == "transform":
+        if pm.nodeType(node) == "nurbsCurve":
             continue
         parent = pm.listRelatives(node, p=1)
         grp = pm.group(em=1, n="{}_{}_grp".format(str(node), name))
