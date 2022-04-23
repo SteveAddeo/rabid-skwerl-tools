@@ -1,9 +1,7 @@
-def duplicate_joints_from_chain(joints):
-    # can be used to make IK and FK joints as well as stretch joints
-    pass
+import pymel.core as pm
 
 
-class Build(object):
+class Build:
     def __init__(self, fkik_obj):
         self.fkikObj = fkik_obj
         # Needs a curves option

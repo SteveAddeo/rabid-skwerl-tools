@@ -8,14 +8,17 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
     for jnt in jnt_chain:
         parent = primary.get_parent_and_children(jnt)[0]
         children = primary.get_parent_and_children(jnt)[1]
+
         # Unparent the joint and any children it may have
         if parent is not None:
             pm.parent(jnt, w=1)
         if children is not None:
             pm.parent(children, w=1)
+
         # Duplicate joint
         dupName = str(jnt).replace(primary.get_type_from_joint(jnt), chain_type)
         dup = pm.duplicate(jnt, n=dupName)[0]
+
         # Set duplicate joint's radius based on chain type
         if chain_type == "FK":
             dupRad = pm.getAttr("{}.radius".format(jnt)) * .65
@@ -24,6 +27,8 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
         else:
             dupRad = pm.getAttr("{}.radius".format(jnt))
         pm.setAttr("{}.radius".format(dup), dupRad)
+
+        # Re-parent joints
         if parent is not None:
             pm.parent(jnt, parent)
         if children is not None:
@@ -36,7 +41,7 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
     return dupJnts
 
 
-class BlendColors(object):
+class BlendColors:
     def __init__(self, name=None, drivers=None, driven=None, const_type="parent"):
         self.name = name
         self.drivers = drivers
@@ -96,55 +101,9 @@ class BlendColors(object):
         self.drivers = drivers[0:2]
 
 
-class FK(object):
-    def __init__(self, prime_obj, ctls_obj, joint_chain):
-        self.primeObj = prime_obj
-        self.ctlsObj = ctls_obj
-        self.jointChain = joint_chain
-
-
-class IK(object):
-    def __init__(self, prime_obj, ctls_obj, joint_chain, spline=False):
-        self.primeObj = prime_obj
-        self.ctlsObj = ctls_obj
-        self.jntChain = joint_chain
-        self.spline = spline
-        self.handles = self.get_handles()
-        self.poleVectors = self.get_pole_vectors()
-
-    def get_handles(self):
-        return "handles"
-
-    def get_pole_vectors(self):
-        return "poleVectors"
-
-    def make_ik_system(self):
-        if len(self.jntChain) == 2:
-            #
-            pass
-        elif len(self.jntChain) == 3 and not self.spline:
-            pass
-        elif len(self.jntChain) == 4 and not self.spline:
-            pass
-        else:
-            pass
-
-    def make_ik_driver(self):
-        pass
-
-    def make_ik_end(self, ik_chain):
-        jnt = ik_chain[-1]
-        dupName = str(jnt).replace("_IK_", "_end_IK_")
-        dup = pm.duplicate(jnt, n=dupName)[0]
-        pm.parent(dup, jnt)
-        offsetAmnt = self.primeObj.guidesObj.scale * .05
-        pm.setAttr("{}.translateX".format(dup), offsetAmnt)
-        return dup
-
-
 # TODO: controls_obj should be dropped in here as well. The object-oriented nature of this will allow
 #  data to be queried more easily
-class Build(object):
+class Build:
     def __init__(self, primary_obj, start_jnt=None, chain_len=3, fk=True, ik=True, ik_spline=False):
         if not fk and not ik:
             return

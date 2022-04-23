@@ -1,6 +1,7 @@
 import os
 import json
 import pymel.core as pm
+from core import constants
 from core import matrix
 
 
@@ -82,6 +83,16 @@ def parent_crv(name=None, nodes=None):
     pm.makeIdentity(transform, a=1, n=2)
     pm.select(transform)
     return transform
+
+
+def reset_transforms(node, t=True, r=True, s=True):
+    for axis in constants.AXES:
+        if t:
+            pm.setAttr("{}.translate{}".format(node, axis), 0)
+        if r:
+            pm.setAttr("{}.rotate{}".format(node, axis), 0)
+        if s:
+            pm.setAttr("{}.scale{}".format(node, axis), 1)
 
 
 def write_data_to_json(file_path, data):

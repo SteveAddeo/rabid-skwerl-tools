@@ -19,8 +19,8 @@ def get_axis_matrix_range(axis):
 
 
 def get_axis_vector(axis):
-    vectorList = [0, 0, 0]
-    vectorList[get_axis_index(axis)] = 1
+    vectorList = [0.0, 0.0, 0.0]
+    vectorList[get_axis_index(axis)] = 1.0
     return vectorList
 
 

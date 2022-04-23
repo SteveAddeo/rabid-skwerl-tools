@@ -11,13 +11,13 @@ def get_name_from_joint(joint):
     return str(joint)
 
 
-def get_parent_and_children(joint):
-    if pm.listRelatives(joint, p=1):
-        parent = pm.listRelatives(joint, p=1)[0]
+def get_parent_and_children(node):
+    if pm.listRelatives(node, p=1):
+        parent = pm.listRelatives(node, p=1)[0]
     else:
         parent = None
-    if pm.listRelatives(joint, c=1):
-        children = pm.listRelatives(joint, c=1)
+    if pm.listRelatives(node, c=1):
+        children = pm.listRelatives(node, c=1)
     else:
         children = None
     return [parent, children]
@@ -33,7 +33,7 @@ def list_joints_in_chain(joint):
     return jnts
 
 
-class Build(object):
+class Build:
     def __init__(self, guides_obj, orientation="xyz", invert=False, orient_tip=True, orient_chain_to_world=False):
         self.guidesObj = guides_obj
         self.name = self.guidesObj.name
@@ -45,9 +45,9 @@ class Build(object):
         self.mainJointsGrp = self.get_joints_grp("jnts_grp")
         self.subJointsGrp = self.get_joints_grp("{}_jnts_grp".format(self.name), parent=self.mainJointsGrp)
         self.primaryJointsGrp = self.get_joints_grp("{}_prime_jnts_grp".format(self.name), parent=self.subJointsGrp)
-        self.aimAxis = self.get_vector_from_axis(self.orientation[0].capitalize())
-        self.upAxis = self.get_vector_from_axis(self.orientation[1].capitalize())
-        self.tertiaryAxis = self.get_vector_from_axis(self.orientation[2].capitalize())
+        self.aimVector = self.get_vector_from_axis(self.orientation[0].capitalize())
+        self.upVector = self.get_vector_from_axis(self.orientation[1].capitalize())
+        self.tertiaryVector = self.get_vector_from_axis(self.orientation[2].capitalize())
         self.primaryJoints = self.get_primary_joints()
         self.longAxis = self.get_long_axis()
         self.check_rotation(self.primaryJoints)
@@ -134,15 +134,9 @@ class Build(object):
             return "Z"
 
     def get_vector_from_axis(self, axis="X"):
-        n = 1
+        vector = constants.get_axis_vector(axis)
         if self.invert:
-            n = -1
-        if axis == "Y":
-            vector = [0, n, 0]
-        elif axis == "Z":
-            vector = [0, 0, n]
-        else:
-            vector = [n, 0, 0]
+            vector = [-v for v in vector]
         return vector
 
     def make_primary_chain(self):
@@ -163,9 +157,9 @@ class Build(object):
 
     def orient_joint(self, joint, aim_obj, up_obj=None):
         if up_obj is None:
-            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimAxis, u=self.upAxis, wut="vector")
+            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimVector, u=self.upVector, wut="vector")
         else:
-            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimAxis, u=self.upAxis, wut="object", wuo=up_obj)
+            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimVector, u=self.upVector, wut="object", wuo=up_obj)
         pm.delete(aimConst)
         pm.makeIdentity(joint, a=1)
 

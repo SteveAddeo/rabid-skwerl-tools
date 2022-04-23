@@ -6,10 +6,10 @@ from jnts import primary
 
 
 def build_rig():
-    if "guides_grp" not in pm.ls():
+    if pm.ls("guides_grp"):
         pm.error("No guides in scene")
     for guides in pm.listRelatives("guides_grp", c=1):
         name = str(guides).split("_")[0]
-        builder = primary.Builder(name)
+        prime = primary.Build(name)
 
 
