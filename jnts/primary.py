@@ -11,18 +11,6 @@ def get_name_from_joint(joint):
     return str(joint)
 
 
-def get_parent_and_children(node):
-    if pm.listRelatives(node, p=1):
-        parent = pm.listRelatives(node, p=1)[0]
-    else:
-        parent = None
-    if pm.listRelatives(node, c=1):
-        children = pm.listRelatives(node, c=1)
-    else:
-        children = None
-    return [parent, children]
-
-
 def get_type_from_joint(joint):
     return str(joint).split("_")[-2]
 

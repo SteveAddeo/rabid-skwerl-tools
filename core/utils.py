@@ -16,6 +16,18 @@ def get_data_from_json(file_path):
     return data
 
 
+def get_parent_and_children(node):
+    if pm.listRelatives(node, p=1):
+        parent = pm.listRelatives(node, p=1)[0]
+    else:
+        parent = None
+    if pm.listRelatives(node, c=1):
+        children = pm.listRelatives(node, c=1)
+    else:
+        children = None
+    return [parent, children]
+
+
 def freeze_transforms(nodes=None):
     if nodes is None:
         nodes = pm.ls(sl=1)
@@ -31,14 +43,16 @@ def freeze_transforms(nodes=None):
     return nodes
 
 
-def make_offset_groups(name=None):
+def make_offset_groups(nodes=None, name=None):
     if name is None:
         name = "offset"
     offsetGrps = []
-    if not pm.ls(sl=1):
+    if nodes is None:
+        nodes = pm.ls(sl=1)
+    if not nodes:
         pm.warning("Nothing Selected")
         return None
-    for node in pm.ls(sl=1):
+    for node in nodes:
         if pm.nodeType(node) == "nurbsCurve":
             continue
         parent = pm.listRelatives(node, p=1)
@@ -98,4 +112,5 @@ def reset_transforms(node, t=True, r=True, s=True):
 def write_data_to_json(file_path, data):
     with open(file_path, "w") as file:
         json.dump(data, file, indent=2)
+
 

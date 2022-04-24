@@ -1,4 +1,6 @@
 import pymel.core as pm
+
+import core.utils
 from core import constants
 from jnts import primary
 
@@ -6,8 +8,8 @@ from jnts import primary
 def duplicate_chain(jnt_chain, chain_type, dup_parent):
     dupJnts = []
     for jnt in jnt_chain:
-        parent = primary.get_parent_and_children(jnt)[0]
-        children = primary.get_parent_and_children(jnt)[1]
+        parent = core.utils.get_parent_and_children(jnt)[0]
+        children = core.utils.get_parent_and_children(jnt)[1]
 
         # Unparent the joint and any children it may have
         if parent is not None:
