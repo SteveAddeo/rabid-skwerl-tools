@@ -60,10 +60,8 @@ class Build:
             guideName = "{}_base_guide".format(self.name)
         elif i == self.chainLength - 1:
             guideName = "{}_tip_guide".format(self.name)
-        elif i >= 1 and self.chainLength >= 4:
-            guideName = "{}_mid{}_guide".format(self.name, str(i).zfill(2))
         else:
-            guideName = "{}_mid_guide".format(self.name)
+            guideName = "{}_mid{}_guide".format(self.name, str(i).zfill(2))
         return guideName
 
     def get_scale(self, scale):
