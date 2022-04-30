@@ -187,10 +187,15 @@ class Build:
         if not self.check_chain_type(chain_type):
             return None
         if chain_type == "FK":
+            color = 30
             parent = self.fkJointsGrp
         else:
+            color = 29
             parent = self.ikJointsGrp
         newChain = duplicate_chain(self.primaryChain, chain_type, parent)
+        for jnt in newChain:
+            pm.setAttr("{}.overrideEnabled".format(str(jnt)), 1)
+            pm.setAttr("{}.overrideColor".format(str(jnt)), color)
         return newChain
 
 

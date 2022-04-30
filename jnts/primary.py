@@ -12,7 +12,11 @@ def get_name_from_joint(joint):
 
 
 def get_type_from_joint(joint):
-    return str(joint).split("_")[-2]
+    jointType = str(joint).split("_")[-2]
+    subTypes = ["base", "mid", "tip"]
+    if jointType in subTypes:
+        jointType = "_".join([str(joint).split("_")[-3], jointType])
+    return jointType
 
 
 def list_joints_in_chain(joint):
@@ -140,6 +144,8 @@ class Build:
             jntPos = pm.xform(guide, q=1, ws=1, rp=1)
             jntRad = self.guidesObj.scale * .1
             jnt = pm.joint(n=jntName, p=jntPos, roo=self.orientation, rad=jntRad)
+            pm.setAttr("{}.overrideEnabled".format(jntName), 1)
+            pm.setAttr("{}.overrideColor".format(jntName), 1)
             jntList.append(jnt)
         return jntList
 

@@ -43,28 +43,6 @@ def freeze_transforms(nodes=None):
     return nodes
 
 
-def make_offset_groups(nodes=None, name=None):
-    if name is None:
-        name = "offset"
-    offsetGrps = []
-    if nodes is None:
-        nodes = pm.ls(sl=1)
-    if not nodes:
-        pm.warning("Nothing Selected")
-        return None
-    for node in nodes:
-        if pm.nodeType(node) == "nurbsCurve":
-            continue
-        parent = pm.listRelatives(node, p=1)
-        grp = pm.group(em=1, n="{}_{}_grp".format(str(node), name))
-        matrix.worldspace_to_matrix(grp, node)
-        if parent:
-            pm.parent(grp, parent[0])
-        pm.parent(node, grp)
-        offsetGrps.append(grp)
-    return offsetGrps
-
-
 def parent_crv(name=None, nodes=None):
     if nodes is None:
         nodes = pm.ls(sl=1)
@@ -112,5 +90,31 @@ def reset_transforms(node, t=True, r=True, s=True):
 def write_data_to_json(file_path, data):
     with open(file_path, "w") as file:
         json.dump(data, file, indent=2)
+
+
+def make_offset_groups(nodes=None, name=None):
+    if name is None:
+        name = "offset"
+    offsetGrps = []
+    if nodes is None:
+        nodes = pm.ls(sl=1)
+    if not nodes:
+        pm.warning("Nothing Selected")
+        return None
+    for node in nodes:
+        if pm.nodeType(node) == "nurbsCurve":
+            continue
+        parent = pm.listRelatives(node, p=1)
+        grp = pm.group(em=1, n="{}_{}_grp".format(str(node), name))
+        pm.parent(grp, node)
+        reset_transforms(grp)
+        if parent:
+            pm.parent(grp, parent[0])
+        else:
+            pm.parent(grp, w=1)
+        pm.parent(node, grp)
+        offsetGrps.append(grp)
+    return offsetGrps
+
 
 

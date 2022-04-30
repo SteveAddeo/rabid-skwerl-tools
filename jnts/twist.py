@@ -1,84 +1,123 @@
 import pymel.core as pm
 
+from core import constants
 from core import utils
-from core import matrix
+from jnts import fkik
 
 
-def make_base_tip_joints(joint, name="twist", mid_jnt=True):
-    # Call joint's parent and children as variables
-    parent = utils.get_parent_and_children(joint)[0]
-    children = utils.get_parent_and_children(joint)[1]
-    childJnt = [child for child in children if pm.nodeType(child) == "joint"]
-
-    # Check to see if joint is able to twist
-    if not childJnt:
+def check_for_child_joint(joint):
+    if not utils.get_parent_and_children(joint)[1] or not [child for child in utils.get_parent_and_children(
+            joint)[1] if pm.nodeType(child) == "joint"]:
         pm.warning("{} has no children that are joints so there's nothing to twist.".format(str(joint)))
+        return False
+    return True
+
+
+def make_base_tip_joints(joint, jnt_type, parent=None):
+    # Check to see if joint is able to twist
+    if not check_for_child_joint(joint):
         return None
 
-    # Parent joints to world and remove children
-    if parent is not None:
-        pm.parent(joint, w=1)
-    pm.parent(children, w=1)
-    gen3 = utils.get_parent_and_children(childJnt[0])[1]
-    if gen3:
-        pm.parent(gen3, w=1)
+    # Call joint's parent and children as variables
+    if parent is None:
+        parent = utils.get_parent_and_children(joint)[0]
 
-    # Get name for duplicate joints
-    if "_prime_" in str(joint):
-        dupName = str(joint).replace("_prime_", "_{}_".format(name))
-    elif "_jnt" in str(joint):
-        dupName = str(joint).replace("_jnt", "_{}_jnt".format(name))
-    else:
-        dupName = "_".join([str(joint), "{}".format(name), "jnt"])
-    baseName = dupName.replace(name, "{}_base".format(name))
-    tipName = dupName.replace(name, "{}_tip".format(name))
+    # Create joints to be used as base and tip
+    children = utils.get_parent_and_children(joint)[1]
+    childJnt = [child for child in children if pm.nodeType(child) == "joint"][0]
+    dupChain = fkik.duplicate_chain([joint, childJnt], jnt_type, parent)
+    baseJnt = dupChain[0]
+    tipJnt = dupChain[1]
 
-    # Duplicate joints
-    baseJnt = pm.duplicate(joint, n=baseName)[0]
-    tipJnt = pm.duplicate(joint, n=tipName)[0]
-    twistJnts = [baseJnt, tipJnt]
+    # Rename joints
+    baseName = str(baseJnt).replace(jnt_type, "{}_base".format(jnt_type))
+    tipName = baseName.replace("_base_jnt", "_tip_jnt")
+    pm.rename(baseJnt, baseName)
+    pm.rename(tipJnt, tipName)
+
+    # Zero out tip joint orientation:
+    utils.reset_transforms(tipJnt, t=False, s=False)
+    for axis in constants.AXES:
+        pm.setAttr("{}.jointOrient{}".format(str(tipJnt), axis), 0.0)
+
+    return [baseJnt, tipJnt]
+
+
+"""def make_follow_joints(joint, parent=None):
+    if not check_for_child_joint(joint):
+        return None
+
+    if parent is None:
+        parent = utils.get_parent_and_children(joint)[0]
+
+    followJnts = make_base_tip_joints(joint, "follow", parent)
+    baseJnt = followJnts[0]
+    tipJnt = followJnts[1]
 
     # Set a different radius for the new joints
-    pm.setAttr("{}.radius".format(baseJnt), (pm.getAttr("{}.radius".format(joint)) * .8))
-    pm.setAttr("{}.radius".format(tipJnt), (pm.getAttr("{}.radius".format(childJnt[0])) * .8))
+    pm.setAttr("{}.radius".format(baseJnt), (pm.getAttr("{}.radius".format(baseJnt)) * .2))
+    pm.setAttr("{}.radius".format(tipJnt), (pm.getAttr("{}.radius".format(tipJnt)) * .2))
 
-    # Make mid joints if needed
-    if mid_jnt:
-        midName = baseName.replace("_base_jnt", "_mid_jnt")
-        midJnt = pm.duplicate(baseJnt, n=midName)[0]
-        pm.pointConstraint(baseJnt, tipJnt, midJnt, n=midName.replace("_jnt", "_pt_cnst"))
+    return followJnts
+
+
+def make_twist_joints(joint, parent=None, mid=True):
+    if not check_for_child_joint(joint):
+        return None
+
+    if parent is None:
+        parent = utils.get_parent_and_children(joint)[0]
+
+    twistJnts = make_base_tip_joints(joint, "twist", parent)
+    childJnt = [node for node in utils.get_parent_and_children(joint)[1] if pm.nodeType(node) == "joint"][0]
+    baseJnt = twistJnts[0]
+    tipJnt = twistJnts[1]
+    pm.parent(tipJnt, parent)
+
+    # Set a different radius for the new joints
+    pm.setAttr("{}.radius".format(baseJnt), (pm.getAttr("{}.radius".format(baseJnt)) * .8))
+    pm.setAttr("{}.radius".format(tipJnt), (pm.getAttr("{}.radius".format(tipJnt)) * .8))
+
+    # Create mid joint if needed
+    if mid:
+        midJnt = make_twist_mid(baseJnt, tipJnt, parent)
         twistJnts = [baseJnt, midJnt, tipJnt]
 
     # Point constrain new joints to the original
     pm.pointConstraint(joint, baseJnt, n=str(baseJnt).replace("_jnt", "_pt_cnst"))
-    pm.pointConstraint(childJnt[0], tipJnt, n=str(tipJnt).replace("_jnt", "_pt_cnst"))
-
-    # Re-parent joints
-    if parent is not None:
-        pm.parent(joint, parent)
-    if gen3:
-        pm.parent(gen3, childJnt)
-    pm.parent(children, joint)
+    pm.pointConstraint(childJnt, tipJnt, n=str(tipJnt).replace("_jnt", "_pt_cnst"))
 
     return twistJnts
+
+
+def make_twist_mid(base, tip, parent=None):
+    if parent is None:
+        parent = utils.get_parent_and_children(base)[0]
+    midName = str(base).replace("_base_jnt", "_mid_jnt")
+    midJnt = pm.duplicate(base, n=midName)[0]
+    pm.pointConstraint(base, tip, midJnt, n=midName.replace("_jnt", "_pt_cnst"))
+    pm.parent(midJnt, parent)
+    return midJnt"""
 
 
 # TODO: Test the twist Build class
 class Build:
     def __init__(self, prime_obj):
-        # TODO: should twist all joint but the end joint
         self.primeObj = prime_obj
-        self.twistJointsGrp = self.get_twist_grp()
-        self.twistJoints = self.get_twist_joints()
+        self.twistJointsGrp = self.get_group("twist")
+        self.followJointsGrp = self.get_group("follow")
+        self.twistJoints = self.get_joints("twist")
+        self.followJoints = self.get_joints("follow")
         self.midMultipliers = {}
         self.upLocators = self.get_up_locs()
-        self.aimConstraints = self.get_aim_consts()
+        self.aimConstraints = self.get_constraints()
+        self.ikHandles = self.get_handles()
 
     # TODO: add a function to have the base_twist_up_loc_offset_grp receive twist data from prime_jnt
     # TODO: add a function to have the tip_twist_up_loc_offset_grp receive twist data from prime_jnt child and
     #  change the midMultiplier.input2 to 1.0
 
-    def get_aim_consts(self):
+    def get_constraints(self):
         aimConsts = {}
         for prime in self.twistJoints:
             twistAim = [[child for child in utils.get_parent_and_children(twist)[1] if
@@ -94,30 +133,37 @@ class Build:
             return None
         return prime[0]
 
-    def get_twist_grp(self):
-        grpName = "{}_twist_jnts_grp".format(self.primeObj.name)
+    def get_group(self, grp_type):
+        grpName = "{}_{}_jnts_grp".format(self.primeObj.name, grp_type)
         if grpName not in [str(child) for child in utils.get_parent_and_children(self.primeObj.subJointsGrp)[1]]:
             grp = pm.group(em=1, n=grpName)
             pm.parent(grp, self.primeObj.subJointsGrp)
         return pm.ls(grpName)[0]
 
-    def get_twist_joints(self):
-        twistJnts = {}
+    def get_handles(self):
+        return "handles"
+
+    def get_joints(self, jnt_type):
+        jntsDict = {}
+        if jnt_type == "follow":
+            parentGrp = self.followJointsGrp
+        else:
+            parentGrp = self.twistJointsGrp
         for jnt in self.primeObj.primaryJoints[0:-1]:
-            grpName = "{}_grp".format(str(jnt).replace("prime", "twist"))
-            twistGrp = pm.ls(grpName)
+            grpName = "{}_grp".format(str(jnt).replace("prime", jnt_type))
+            jntGrp = pm.ls(grpName)
             # Create a group for the twist joints if one does not exist
-            if not twistGrp or grpName not in [str(child) for
-                                               child in utils.get_parent_and_children(self.twistJointsGrp)]:
-                twistGrp = [pm.group(em=1, n=grpName)]
-                pm.parent(twistGrp, self.twistJointsGrp)
+            if not jntGrp or grpName not in [str(child) for
+                                               child in utils.get_parent_and_children(parentGrp)]:
+                jntGrp = [pm.group(em=1, n=grpName)]
+                pm.parent(jntGrp, parentGrp)
             # Get the list of twist joints
-            twistList = utils.get_parent_and_children(pm.ls(grpName)[0])[1]
+            jntList = utils.get_parent_and_children(pm.ls(grpName)[0])[1]
             # Create twist joints if list is empty
-            if not twistList:
-                twistList = self.make_twist_joints(jnt, twistGrp[0])
-            twistJnts[jnt] = twistList
-        return twistJnts
+            if not jntList:
+                jntList = self.make_joints(jnt, jntGrp[0], jnt_type)
+            jntsDict[jnt] = jntList
+        return jntsDict
 
     def get_up_locs(self):
         upLocs = {}
@@ -146,12 +192,46 @@ class Build:
             aimConsts.append(aim)
         return aimConsts
 
-    def make_twist_joints(self, prime_jnt, parent_grp):
-        twistJnts = make_base_tip_joints(prime_jnt)
-        for jnt in twistJnts:
-            pm.parent(jnt, parent_grp)
-            utils.reset_transforms(jnt, t=False, s=False)
-        return twistJnts
+    def make_joints(self, prime_jnt, parent_grp, jnt_type, mid=True):
+        # TODO: figure out a way to turn mid off
+        if not check_for_child_joint(prime_jnt):
+            return None
+        baseTipJnts = make_base_tip_joints(prime_jnt, jnt_type, parent_grp)
+        baseJnt = baseTipJnts[0]
+        tipJnt = baseTipJnts[1]
+        if jnt_type == "follow":
+            color = 3
+            radiusMult = .2
+            newJnts = baseTipJnts
+        else:
+            color = 20
+            radiusMult = .8
+            newJnts = self.make_twist_jnts(prime_jnt, parent_grp, baseJnt, tipJnt, mid)
+        pm.setAttr("{}.radius".format(baseJnt), (pm.getAttr("{}.radius".format(baseJnt)) * radiusMult))
+        pm.setAttr("{}.radius".format(tipJnt), (pm.getAttr("{}.radius".format(tipJnt)) * radiusMult))
+        for jnt in newJnts:
+            pm.setAttr("{}.overrideEnabled".format(str(jnt)), 1)
+            pm.setAttr("{}.overrideColor".format(str(jnt)), color)
+        return newJnts
+
+    def make_twist_jnts(self, prime_jnt, parent_grp, base, tip, mid=True):
+        childJnt = [node for node in utils.get_parent_and_children(prime_jnt)[1] if pm.nodeType(node) == "joint"][0]
+        pm.parent(tip, parent_grp)
+        jnts = [base, tip]
+        if mid:
+            midJnt = self.make_twist_mid(base, tip, parent_grp)
+            jnts = [base, midJnt, tip]
+        # Point constrain new joints to the original
+        pm.pointConstraint(prime_jnt, base, n=str(base).replace("_jnt", "_pt_cnst"))
+        pm.pointConstraint(childJnt, tip, n=str(tip).replace("_jnt", "_pt_cnst"))
+        return jnts
+
+    def make_twist_mid(self, base, tip, parent_grp):
+        midName = str(base).replace("_base_jnt", "_mid_jnt")
+        midJnt = pm.duplicate(base, n=midName)[0]
+        pm.pointConstraint(base, tip, midJnt, n=midName.replace("_jnt", "_pt_cnst"))
+        pm.parent(midJnt, parent_grp)
+        return midJnt
 
     def make_up_locs(self, prime_jnt):
         upLocs = []
@@ -160,17 +240,9 @@ class Build:
             pm.move(loc, [(v * self.primeObj.guidesObj.scale * .2) for v in self.primeObj.upVector], r=1, os=1)
             pm.makeIdentity(loc, a=1)
             offsetGrp = utils.make_offset_groups([loc])[0]
-            pm.parent(offsetGrp, jnt)
+            pm.parent(offsetGrp, self.followJoints[prime_jnt][0])
             utils.reset_transforms(offsetGrp)
-            if "_base_jnt" in str(jnt):
-                pm.parent(offsetGrp, utils.get_parent_and_children(prime_jnt)[0])
-            elif "_tip_jnt" in str(jnt):
-                pm.parent(offsetGrp, prime_jnt)
-            else:
-                pm.parent(offsetGrp, self.twistJoints[prime_jnt][0])
-                """pm.parent(loc, w=1)
-                pm.setAttr("{}.rotate{}".format(str(offsetGrp), self.primeObj.orientation[0].upper()), 0.0)
-                pm.parent(loc, offsetGrp)"""
+            if "_mid_jnt" in str(jnt):
                 self.set_mid_up(jnt, loc)
             upLocs.append(loc)
         return upLocs
