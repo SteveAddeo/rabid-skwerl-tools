@@ -189,7 +189,7 @@ class Build:
         if self.orientTip:
             pm.parent(joint, prev_jnt)
             for axis in constants.AXES:
-                pm.setAttr("foo_tip_prime_jnt.jointOrient{}".format(axis), 0)
+                pm.setAttr("{}.jointOrient{}".format(str(joint), axis), 0)
         else:
             pm.xform(joint, ws=1, ro=(0, 0, 0))
             pm.makeIdentity(joint, a=1)

@@ -111,7 +111,7 @@ class Build:
         self.midMultipliers = {}
         self.upLocators = self.get_up_locs()
         self.aimConstraints = self.get_constraints()
-        self.ikHandles = self.get_handles()
+        # self.ikHandles = self.get_handles()
 
     # TODO: add a function to have the base_twist_up_loc_offset_grp receive twist data from prime_jnt
     # TODO: add a function to have the tip_twist_up_loc_offset_grp receive twist data from prime_jnt child and
@@ -153,8 +153,7 @@ class Build:
             grpName = "{}_grp".format(str(jnt).replace("prime", jnt_type))
             jntGrp = pm.ls(grpName)
             # Create a group for the twist joints if one does not exist
-            if not jntGrp or grpName not in [str(child) for
-                                               child in utils.get_parent_and_children(parentGrp)]:
+            if not jntGrp or grpName not in [str(child) for child in utils.get_parent_and_children(parentGrp)]:
                 jntGrp = [pm.group(em=1, n=grpName)]
                 pm.parent(jntGrp, parentGrp)
             # Get the list of twist joints
@@ -168,8 +167,8 @@ class Build:
     def get_up_locs(self):
         upLocs = {}
         for prime in self.twistJoints:
-            twistUps = [pm.ls(str(twist).replace("_jnt", "_up_loc"))[0] for
-                            twist in self.twistJoints[prime] if pm.ls(str(twist).replace("_jnt", "_up_loc"))]
+            twistUps = [pm.ls(str(twist).replace("_jnt", "_up_loc"))[0] for twist in self.twistJoints[
+                prime] if pm.ls(str(twist).replace("_jnt", "_up_loc"))]
             if not twistUps:
                 twistUps = self.make_up_locs(prime)
             upLocs[prime] = twistUps
@@ -229,6 +228,7 @@ class Build:
     def make_twist_mid(self, base, tip, parent_grp):
         midName = str(base).replace("_base_jnt", "_mid_jnt")
         midJnt = pm.duplicate(base, n=midName)[0]
+        pm.setAttr("{}.radius".format(midJnt), (pm.getAttr("{}.radius".format(base)) * .8))
         pm.pointConstraint(base, tip, midJnt, n=midName.replace("_jnt", "_pt_cnst"))
         pm.parent(midJnt, parent_grp)
         return midJnt
@@ -240,8 +240,9 @@ class Build:
             pm.move(loc, [(v * self.primeObj.guidesObj.scale * .2) for v in self.primeObj.upVector], r=1, os=1)
             pm.makeIdentity(loc, a=1)
             offsetGrp = utils.make_offset_groups([loc])[0]
-            pm.parent(offsetGrp, self.followJoints[prime_jnt][0])
+            pm.parent(offsetGrp, jnt)
             utils.reset_transforms(offsetGrp)
+            pm.parent(offsetGrp, self.followJoints[prime_jnt][0])
             if "_mid_jnt" in str(jnt):
                 self.set_mid_up(jnt, loc)
             upLocs.append(loc)
