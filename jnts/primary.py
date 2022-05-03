@@ -3,6 +3,15 @@ import maya.api.OpenMaya as api
 from core import constants
 
 
+def get_grp(grp_name, parent=None):
+    if pm.ls(grp_name):
+        return pm.ls(grp_name)[0]
+    grp = pm.group(em=1, n=grp_name)
+    if parent is not None:
+        pm.parent(grp, parent)
+    return grp
+
+
 def get_name_from_joint(joint):
     if "_prime_jnt" in str(joint):
         return str(joint).replace("_primary_jnt", "")
@@ -34,9 +43,9 @@ class Build:
         self.invert = invert
         self.orientTip = orient_tip
         self.orientToWorld = orient_chain_to_world
-        self.mainJointsGrp = self.get_joints_grp("jnts_grp")
-        self.subJointsGrp = self.get_joints_grp("{}_jnts_grp".format(self.name), parent=self.mainJointsGrp)
-        self.primaryJointsGrp = self.get_joints_grp("{}_prime_jnts_grp".format(self.name), parent=self.subJointsGrp)
+        self.mainJointsGrp = get_grp("jnts_grp")
+        self.subJointsGrp = get_grp("{}_jnts_grp".format(self.name), parent=self.mainJointsGrp)
+        self.primaryJointsGrp = get_grp("{}_prime_jnts_grp".format(self.name), parent=self.subJointsGrp)
         self.aimVector = self.get_vector_from_axis(self.orientation[0].capitalize())
         self.upVector = self.get_vector_from_axis(self.orientation[1].capitalize())
         self.tertiaryVector = self.get_vector_from_axis(self.orientation[2].capitalize())
@@ -99,14 +108,6 @@ class Build:
         self.orient_joints_in_chain(jnts)
         self.check_rotation(jnts, longAxis)
         return jnts
-
-    def get_joints_grp(self, grp_name, parent=None):
-        if pm.ls(grp_name):
-            return pm.ls(grp_name)[0]
-        grp = pm.group(em=1, n=grp_name)
-        if parent is not None:
-            pm.parent(grp, parent)
-        return grp
 
     def get_long_axis(self, joint=None):
         if joint is None:

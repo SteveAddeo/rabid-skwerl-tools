@@ -3,6 +3,8 @@ import pymel.core as pm
 from core import constants
 from core import utils
 from jnts import fkik
+from jnts import primary
+from rigs import ik
 
 
 def check_for_child_joint(joint):
@@ -43,69 +45,14 @@ def make_base_tip_joints(joint, jnt_type, parent=None):
     return [baseJnt, tipJnt]
 
 
-"""def make_follow_joints(joint, parent=None):
-    if not check_for_child_joint(joint):
-        return None
-
-    if parent is None:
-        parent = utils.get_parent_and_children(joint)[0]
-
-    followJnts = make_base_tip_joints(joint, "follow", parent)
-    baseJnt = followJnts[0]
-    tipJnt = followJnts[1]
-
-    # Set a different radius for the new joints
-    pm.setAttr("{}.radius".format(baseJnt), (pm.getAttr("{}.radius".format(baseJnt)) * .2))
-    pm.setAttr("{}.radius".format(tipJnt), (pm.getAttr("{}.radius".format(tipJnt)) * .2))
-
-    return followJnts
-
-
-def make_twist_joints(joint, parent=None, mid=True):
-    if not check_for_child_joint(joint):
-        return None
-
-    if parent is None:
-        parent = utils.get_parent_and_children(joint)[0]
-
-    twistJnts = make_base_tip_joints(joint, "twist", parent)
-    childJnt = [node for node in utils.get_parent_and_children(joint)[1] if pm.nodeType(node) == "joint"][0]
-    baseJnt = twistJnts[0]
-    tipJnt = twistJnts[1]
-    pm.parent(tipJnt, parent)
-
-    # Set a different radius for the new joints
-    pm.setAttr("{}.radius".format(baseJnt), (pm.getAttr("{}.radius".format(baseJnt)) * .8))
-    pm.setAttr("{}.radius".format(tipJnt), (pm.getAttr("{}.radius".format(tipJnt)) * .8))
-
-    # Create mid joint if needed
-    if mid:
-        midJnt = make_twist_mid(baseJnt, tipJnt, parent)
-        twistJnts = [baseJnt, midJnt, tipJnt]
-
-    # Point constrain new joints to the original
-    pm.pointConstraint(joint, baseJnt, n=str(baseJnt).replace("_jnt", "_pt_cnst"))
-    pm.pointConstraint(childJnt, tipJnt, n=str(tipJnt).replace("_jnt", "_pt_cnst"))
-
-    return twistJnts
-
-
-def make_twist_mid(base, tip, parent=None):
-    if parent is None:
-        parent = utils.get_parent_and_children(base)[0]
-    midName = str(base).replace("_base_jnt", "_mid_jnt")
-    midJnt = pm.duplicate(base, n=midName)[0]
-    pm.pointConstraint(base, tip, midJnt, n=midName.replace("_jnt", "_pt_cnst"))
-    pm.parent(midJnt, parent)
-    return midJnt"""
-
-
 # TODO: Test the twist Build class
 class Build:
     def __init__(self, prime_obj):
         self.primeObj = prime_obj
-        self.twistJointsGrp = self.get_group("twist")
-        self.followJointsGrp = self.get_group("follow")
+        self.twistJointsGrp = primary.get_grp("{}_twist_jnts_grp".format(
+            self.primeObj.name), self.primeObj.subJointsGrp)
+        self.followJointsGrp = primary.get_grp("{}_follow_jnts_grp".format(
+            self.primeObj.name), self.primeObj.subJointsGrp)
         self.twistJoints = self.get_joints("twist")
         self.followJoints = self.get_joints("follow")
         self.midMultipliers = {}
@@ -133,15 +80,19 @@ class Build:
             return None
         return prime[0]
 
-    def get_group(self, grp_type):
-        grpName = "{}_{}_jnts_grp".format(self.primeObj.name, grp_type)
-        if grpName not in [str(child) for child in utils.get_parent_and_children(self.primeObj.subJointsGrp)[1]]:
-            grp = pm.group(em=1, n=grpName)
-            pm.parent(grp, self.primeObj.subJointsGrp)
-        return pm.ls(grpName)[0]
-
     def get_handles(self):
-        return "handles"
+        hndls = {}
+        for i, jnt in enumerate(self.primeObj.primaryJoints[0:-1]):
+            hndlName = str(jnt).replace("_base_jnt", "_IK_hndl")
+            if pm.ls(hndlName):
+                hndl = pm.ls(hndlName)[0]
+            else:
+                hndl = self.make_handle(jnt, i, hndlName)
+            if not utils.get_parent_and_children(hndl)[1] or not [child for child in utils.get_parent_and_children(
+                    hndl)[1] if pm.nodeType(child) == "pointConstraint"]:
+                pm.pointConstraint(self.primeObj.primaryJoints[i+1], hndl, mo=1)
+            hndls[jnt] = hndl
+        return hndls
 
     def get_joints(self, jnt_type):
         jntsDict = {}
@@ -149,7 +100,7 @@ class Build:
             parentGrp = self.followJointsGrp
         else:
             parentGrp = self.twistJointsGrp
-        for jnt in self.primeObj.primaryJoints[0:-1]:
+        for i, jnt in enumerate(self.primeObj.primaryJoints[0:-1]):
             grpName = "{}_grp".format(str(jnt).replace("prime", jnt_type))
             jntGrp = pm.ls(grpName)
             # Create a group for the twist joints if one does not exist
@@ -161,6 +112,11 @@ class Build:
             # Create twist joints if list is empty
             if not jntList:
                 jntList = self.make_joints(jnt, jntGrp[0], jnt_type)
+            if not [child for child in utils.get_parent_and_children(jntGrp[0])[1] if "Constraint" in str(child)]:
+                if i == 0:
+                    pm.pointConstraint(self.primeObj.primaryJoints[i], jntGrp[0], mo=1)
+                else:
+                    pm.parentConstraint(self.primeObj.primaryJoints[i-1], jntGrp, mo=1)
             jntsDict[jnt] = jntList
         return jntsDict
 
@@ -190,6 +146,11 @@ class Build:
             aim = pm.aimConstraint(aimJnt, jnt, aim=aimVec, u=upV, wuo=up, wut="objectrotation")
             aimConsts.append(aim)
         return aimConsts
+
+    def make_handle(self, joint, index, name):
+        jntList = [joint, self.primeObj.primaryJoints[index + 1]]
+        ikObj = ik.Build(self.primeObj, jntList, handle_name=name)
+        return ikObj.handles[0]
 
     def make_joints(self, prime_jnt, parent_grp, jnt_type, mid=True):
         # TODO: figure out a way to turn mid off
