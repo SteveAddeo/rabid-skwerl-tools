@@ -58,7 +58,7 @@ class Build:
         self.midMultipliers = {}
         self.upLocators = self.get_up_locs()
         self.aimConstraints = self.get_constraints()
-        # self.ikHandles = self.get_handles()
+        self.ikHandles = self.get_handles()
 
     # TODO: add a function to have the base_twist_up_loc_offset_grp receive twist data from prime_jnt
     # TODO: add a function to have the tip_twist_up_loc_offset_grp receive twist data from prime_jnt child and
@@ -87,9 +87,9 @@ class Build:
             if pm.ls(hndlName):
                 hndl = pm.ls(hndlName)[0]
             else:
-                hndl = self.make_handle(jnt, i, hndlName)
-            if not utils.get_parent_and_children(hndl)[1] or not [child for child in utils.get_parent_and_children(
-                    hndl)[1] if pm.nodeType(child) == "pointConstraint"]:
+                # TODO: this doesn't appear to be running when it should
+                hndl = self.make_handle(jnt, hndlName)
+            if not [c for c in pm.listConnections(hndl, c=1) if pm.nodeType(c[1]) == "pointConstraint"]:
                 pm.pointConstraint(self.primeObj.primaryJoints[i+1], hndl, mo=1)
             hndls[jnt] = hndl
         return hndls
@@ -142,14 +142,13 @@ class Build:
                 aimJnt = self.twistJoints[prime_jnt][-1]
                 aimVec = self.primeObj.aimVector
             upV = self.primeObj.upVector
-            print(jnt, up, upV)
             aim = pm.aimConstraint(aimJnt, jnt, aim=aimVec, u=upV, wuo=up, wut="objectrotation")
             aimConsts.append(aim)
         return aimConsts
 
-    def make_handle(self, joint, index, name):
-        jntList = [joint, self.primeObj.primaryJoints[index + 1]]
-        ikObj = ik.Build(self.primeObj, jntList, handle_name=name)
+    def make_handle(self, joint, name):
+        ikObj = ik.Build(self.primeObj, self.twistJoints[joint], handle_name=name)
+        print(ikObj.handles)
         return ikObj.handles[0]
 
     def make_joints(self, prime_jnt, parent_grp, jnt_type, mid=True):
@@ -206,6 +205,8 @@ class Build:
             pm.parent(offsetGrp, self.followJoints[prime_jnt][0])
             if "_mid_jnt" in str(jnt):
                 self.set_mid_up(jnt, loc)
+            # TODO: if "_tip_jnt" in str(jnt): connect rotateX of the prime joint to the rotateX of the offset grp
+            # TODO: up_locs need X rotation of base and tip for end joint
             upLocs.append(loc)
         return upLocs
 

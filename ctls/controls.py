@@ -97,7 +97,7 @@ def make_icon(name=None, icon_type="FK", scale=10.0, aim="Z"):
 
 def make_pin(name=None, scale=10.0, aim="X", up="Y", invert=False):
     if name is None:
-        name = "gimbal_ctl1"
+        name = "pin_ctl1"
     aimAxis = constants.get_axis_vector(aim)
     upAxis = [item for item in constants.get_axis_vector(up)]
     if invert:
