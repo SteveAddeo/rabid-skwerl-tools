@@ -1,15 +1,15 @@
 import pymel.core as pm
 
-import core.utils
+from core import utils
 from core import constants
-from jnts import primary
+from jnts import driver
 
 
 def duplicate_chain(jnt_chain, chain_type, dup_parent):
     dupJnts = []
     for jnt in jnt_chain:
-        parent = core.utils.get_parent_and_children(jnt)[0]
-        children = core.utils.get_parent_and_children(jnt)[1]
+        parent = utils.get_parent_and_children(jnt)[0]
+        children = utils.get_parent_and_children(jnt)[1]
 
         # Unparent the joint and any children it may have
         if parent is not None:
@@ -18,7 +18,7 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
             pm.parent(children, w=1)
 
         # Duplicate joint
-        dupName = str(jnt).replace(primary.get_type_from_joint(jnt), chain_type)
+        dupName = str(jnt).replace(driver.get_type_from_joint(jnt), chain_type)
         dup = pm.duplicate(jnt, n=dupName)[0]
 
         # Set duplicate joint's radius based on chain type
@@ -43,7 +43,7 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
     return dupJnts
 
 
-class BlendColors:
+class BlendColors(object):
     def __init__(self, name=None, drivers=None, driven=None, const_type="parent"):
         self.name = name
         self.drivers = drivers
@@ -52,7 +52,7 @@ class BlendColors:
         if self.drivers is None or self.driven is None:
             self.get_driver_driven()
         if self.name is None:
-            self.name = primary.get_name_from_joint(self.driven)
+            self.name = driver.get_name_from_joint(self.driven)
         self.blendColors = self.get_blend_colors()
 
     def check_connections(self, bc_nodes):
@@ -160,7 +160,7 @@ class Build:
         name = "{}_{}_jnt".format(self.name, chain_type)
         if not pm.ls(name):
             return self.make_chain(chain_type)
-        return primary.list_joints_in_chain(name)
+        return driver.list_joints_in_chain(name)
 
     def get_chain_grp(self, chain_type="FK"):
         if not self.check_chain_type(chain_type):
@@ -194,8 +194,8 @@ class Build:
             parent = self.ikJointsGrp
         newChain = duplicate_chain(self.primaryChain, chain_type, parent)
         for jnt in newChain:
-            pm.setAttr("{}.overrideEnabled".format(str(jnt)), 1)
-            pm.setAttr("{}.overrideColor".format(str(jnt)), color)
+            jnt.overrideEnabled.set(1)
+            jnt.overrideColor.set(color)
         return newChain
 
 

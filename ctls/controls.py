@@ -9,7 +9,7 @@ SHAPES = utils.get_data_from_json(os.path.join(utils.RSTPATH, "rabid-skwerl-tool
 
 def make_shape(name=None, scale=10.0, shape="Cube", rot90=False, mirror_x=False):
     if name is None:
-        name = "{}_ctl1".format(shape.lower())
+        name = f"{shape.lower()}_ctl1"
     points = SHAPES[shape]
     if mirror_x:
         points = [[-axis for axis in point] for point in points]
@@ -17,6 +17,7 @@ def make_shape(name=None, scale=10.0, shape="Cube", rot90=False, mirror_x=False)
         points = [[point[2], point[1], point[0]] for point in points]
     ptsScaled = [[axis * scale for axis in point] for point in points]
     ctl = pm.curve(n=name, d=1, p=ptsScaled)
+    pm.delete(ctl, ch=1)
     return ctl
 
 
@@ -26,6 +27,7 @@ def make_circle(name=None, scale=10.0, aim="X"):
     aimAxis = constants.get_axis_vector(aim)
     radius = scale * .3
     ctl = pm.circle(n=name, nr=aimAxis, r=radius)[0]
+    pm.delete(ctl, ch=1)
     return ctl
 
 
@@ -62,6 +64,36 @@ def resize_cube(cube, length, aim="X"):
         pm.xform(cv, ws=1, t=offset)
 
 
+def make_global_controls(scale=10):
+    # Create Controls and groups
+    trs = make_trs("global_ctl", scale)
+    loc = make_circle("loc_ctl", 3*scale, aim="Y")
+    cog = make_cog("root_ctl", .6 * scale)
+    grp = utils.make_group("global_ctl_grp", trs)
+    utils.make_group("ctl_grp", grp)
+    pm.parent(cog, loc)
+    pm.parent(loc, trs)
+    # Set the rotation order and lock the X & Z scale axis to the Y df each controls
+    ctls = [trs, loc, cog]
+    for ctl in ctls:
+        ctl.rotateOrder.set(2)
+        pm.connectAttr(ctl.scalY, ctl.scaleX)
+        pm.connectAttr(ctl.scaleY, ctl.scaleX)
+        # Color the shape nodes
+        for shape in ctl.getShapes():
+            shape.overrideEnabled.set(1)
+            shape.overrideColor.set(17)
+    # Add scale multipliers to scale the driver joints and
+    gMult = pm.shadingNode("multDoubleLinear", n="global_scale_mult", au=1)
+    lMult = pm.shadingNode("multDoubleLinear", n="local_scale_mult", au=1)
+    # Connect the nodes
+    pm.connectAttr(trs.scaleY, gMult.input1, f=1)
+    pm.connectAttr(cog.scaleY, gMult.input2, f=1)
+    pm.connectAttr(gMult.output, lMult.input1, f=1)
+    pm.connectAttr(cog.scaleY, lMult.input2, f=1)
+    # TODO: add attributes to controls
+
+
 def make_gimbal(name=None, scale=10.0, aim="X", angle="Z", invert=False):
     if name is None:
         name = "gimbal_ctl1"
@@ -73,6 +105,7 @@ def make_gimbal(name=None, scale=10.0, aim="X", angle="Z", invert=False):
     cir = pm.circle(r=radius, nr=aimAxis)[0]
     subCir = pm.circle(c=[item * radius for item in angleAxis], nr=aimAxis, r=radius * .25)[0]
     ctl = utils.parent_crv(name, [subCir, cir])
+    pm.delete(ctl, ch=1)
     return ctl
 
 
@@ -108,6 +141,7 @@ def make_pin(name=None, scale=10.0, aim="X", up="Y", invert=False):
     curve = pm.curve(d=1, p=([0, 0, 0], [item * length for item in upAxis]))
     circle = pm.circle(c=center, nr=aimAxis, r=radius)[0]
     ctl = utils.parent_crv(name, [circle, curve])
+    pm.delete(ctl, ch=1)
     return ctl
 
 
@@ -124,6 +158,7 @@ def make_sphere(name=None, scale=10.0):
     crv2 = pm.circle(nr=[0, 1, 0], r=radius)
     crv3 = pm.circle(nr=[0, 0, 1], r=radius)
     ctl = utils.parent_crv(name, [crv3[0], crv2[0], crv1[0]])
+    pm.delete(ctl, ch=1)
     return ctl
 
 
@@ -152,6 +187,7 @@ def make_square(name=None, scale=10.0, aim="X"):
     ptVector = [v * (scale * .3) for v in vector]
     ctl = pm.curve(n=name, d=1, p=[ptVector, [-v if i == indexes[0] else v for i, v in enumerate(ptVector)], [
         -v for v in ptVector], [-v if i == indexes[1] else v for i, v in enumerate(ptVector)], ptVector])
+    pm.delete(ctl, ch=1)
     return ctl
 
 

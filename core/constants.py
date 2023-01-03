@@ -1,4 +1,5 @@
 AXES = ["X", "Y", "Z"]
+TRNSFRMATTRS = ["translate", "rotate", "scale"]
 FROZENMTRX = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
 

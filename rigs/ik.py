@@ -2,7 +2,7 @@ import pymel.core as pm
 
 from core import constants
 from core import utils
-from jnts import primary
+from jnts import driver
 
 
 def make_handle(start, end, name=None):
@@ -19,9 +19,9 @@ class Build:
         self.handleName = self.get_name(handle_name)
         self.ctlsObj = ctls_obj
         self.spline = spline
-        self.mainRigsGrp = primary.get_grp("rigs_grp")
-        self.subRigsGrp = primary.get_grp("{}_rigs_grp".format(self.primeObj.name), parent=self.mainRigsGrp)
-        self.handlesGrp = primary.get_grp("{}_IK_hndls_grp".format(self.primeObj.name), parent=self.subRigsGrp)
+        self.mainRigsGrp = driver.get_grp("rigs_grp")
+        self.subRigsGrp = driver.get_grp("{}_rigs_grp".format(self.primeObj.name), parent=self.mainRigsGrp)
+        self.handlesGrp = driver.get_grp("{}_IK_hndls_grp".format(self.primeObj.name), parent=self.subRigsGrp)
         self.handles = self.get_handles()
         # self.poleVectors = self.get_pole_vectors()
 

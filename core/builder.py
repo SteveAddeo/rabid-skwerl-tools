@@ -2,7 +2,7 @@
 import pymel.core as pm
 
 # Skwerl
-from jnts import primary
+from jnts import driver
 
 
 def build_rig():
@@ -10,6 +10,6 @@ def build_rig():
         pm.error("No guides in scene")
     for guides in pm.listRelatives("guides_grp", c=1):
         name = str(guides).split("_")[0]
-        prime = primary.Build(name)
+        prime = driver.Build(name)
 
 

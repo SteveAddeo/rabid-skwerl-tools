@@ -3,7 +3,7 @@ import pymel.core as pm
 from core import constants
 from core import utils
 from jnts import fkik
-from jnts import primary
+from jnts import driver
 from rigs import ik
 
 
@@ -49,9 +49,9 @@ def make_base_tip_joints(joint, jnt_type, parent=None):
 class Build:
     def __init__(self, prime_obj):
         self.primeObj = prime_obj
-        self.twistJointsGrp = primary.get_grp("{}_twist_jnts_grp".format(
+        self.twistJointsGrp = driver.get_grp("{}_twist_jnts_grp".format(
             self.primeObj.name), self.primeObj.subJointsGrp)
-        self.followJointsGrp = primary.get_grp("{}_follow_jnts_grp".format(
+        self.followJointsGrp = driver.get_grp("{}_follow_jnts_grp".format(
             self.primeObj.name), self.primeObj.subJointsGrp)
         self.twistJoints = self.get_joints("twist")
         self.followJoints = self.get_joints("follow")
