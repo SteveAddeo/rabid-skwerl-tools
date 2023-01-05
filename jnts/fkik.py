@@ -160,7 +160,7 @@ class Build:
         name = "{}_{}_jnt".format(self.name, chain_type)
         if not pm.ls(name):
             return self.make_chain(chain_type)
-        return driver.list_joints_in_chain(name)
+        return utils.get_joints_in_chain(pm.PyNode(name))
 
     def get_chain_grp(self, chain_type="FK"):
         if not self.check_chain_type(chain_type):
