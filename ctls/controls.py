@@ -237,6 +237,9 @@ def make_fkik(name=None, scale=10.0, aim="Z"):
     return [ctl, fkShapes, ikShapes, lineShapes]
 
 
-
+# TODO: build controls from driver skeleton
+class Build(object):
+    def __init__(self, driver_obj):
+        self.driver = driver_obj
 
 

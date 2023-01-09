@@ -28,6 +28,16 @@ def set_sine_lock_end(hndl):
 
 
 #############
+# Nodes
+#############
+
+def check_shading_node(name, node_type):
+    if pm.ls(name):
+        return pm.PyNode(name)
+    node = pm.shadingNode(node_type, n=name, au=1)
+
+
+#############
 # Outliner
 #############
 
@@ -127,7 +137,7 @@ def get_length_of_chain(joint, aim="X"):
 
 def get_info_from_joint(joint, name=False, num=False, side=False, task=False):
     if name:
-        return joint.name().split("_")[1]
+        return "_".join(joint.name().split("_")[:2])
     if num:
         return len(get_joints_in_chain(joint))
     if side:
@@ -137,9 +147,17 @@ def get_info_from_joint(joint, name=False, num=False, side=False, task=False):
 
 
 def get_joints_in_chain(joint):
-    jnts = [jnt for jnt in reversed(pm.listRelatives(joint, ad=1))]
+    jnts = [jnt for jnt in reversed(pm.listRelatives(joint, ad=1)) if jnt.type() == "joint"]
     jnts.insert(0, joint)
     return jnts
+
+
+def get_joint_type(joint):
+    jointType = joint.name().split("_")[-2]
+    subTypes = ["base", "mid", "tip"]
+    if jointType in subTypes:
+        jointType = "_".join([joint.name().split("_")[-3], jointType])
+    return jointType
 
 
 def make_curve_from_chain(joint, name=None):
@@ -148,19 +166,60 @@ def make_curve_from_chain(joint, name=None):
         name = f"{get_info_from_joint(joint, name=True)}_crv"
     # Check if curve exists
     if pm.ls(name):
-        return pm.ls(name)[0]
+        return pm.PyNode(name)
     # Get joints and their World Space positions
     jnts = get_joints_in_chain(joint)
     pts = [pm.xform(jnt, q=1, ws=1, rp=1) for jnt in jnts]
     # Build the curve
-    crv = pm.curve(n=name, d=3, p=pts)
+    deg = 3
+    if not len(jnts) > 4:
+        deg = 1
+    crv = pm.curve(n=name, d=deg, p=pts)
     # Set the pivot point to the curve's base
     pm.xform(crv, p=1, rp=pts[0])
     pm.delete(crv, ch=1)
     crv.inheritsTransform.set(0)
+    # Group the curve
+    grp = make_group(f"{name}_grp", child=crv, parent=make_group("crv_grp", parent=make_group("utils_grp")))
+    pm.xform(grp, t=pm.xform(joint, q=1, ws=1, rp=1))
+    # Create a curve info node
     info = pm.shadingNode("curveInfo", n=f"{name}_info", au=1)
     pm.connectAttr(crv.worldSpace[0], info.inputCurve)
     return crv
+
+
+def duplicate_chain(jnt_chain, chain_type, dup_parent):
+    dupJnts = []
+    for jnt in jnt_chain:
+        parent = get_parent_and_children(jnt)[0]
+        children = get_parent_and_children(jnt)[1]
+        # Unparent the joint and any children it may have
+        if parent is not None:
+            pm.parent(jnt, w=1)
+        if children is not None:
+            pm.parent(children, w=1)
+        # Duplicate joint
+        dupName = jnt.name().replace(get_joint_type(jnt), chain_type)
+        dup = pm.duplicate(jnt, n=dupName)[0]
+        # Set duplicate joint's radius based on chain type
+        if chain_type == "FK":
+            dupRad = jnt.radius.get() * 0.65
+        elif chain_type == "IK":
+            dupRad = jnt.radius.get() * 1.6
+        else:
+            dupRad = jnt.radius.get() * 0.4
+        dup.radius.set(dupRad)
+        # Re-parent joints
+        if parent is not None:
+            pm.parent(jnt, parent)
+        if children is not None:
+            pm.parent(children, jnt)
+        if dupJnts:
+            pm.parent(dup, dupJnts[-1])
+        else:
+            pm.parent(dup, dup_parent)
+        dupJnts.append(dup)
+    return dupJnts
 
 
 #############

@@ -1,8 +1,9 @@
 import pymel.core as pm
 
-from core import utils
 from core import constants
-from jnts import driver
+from core import matrix
+from core import utils
+from rigs import stretch
 
 
 def duplicate_chain(jnt_chain, chain_type, dup_parent):
@@ -10,17 +11,14 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
     for jnt in jnt_chain:
         parent = utils.get_parent_and_children(jnt)[0]
         children = utils.get_parent_and_children(jnt)[1]
-
         # Unparent the joint and any children it may have
         if parent is not None:
             pm.parent(jnt, w=1)
         if children is not None:
             pm.parent(children, w=1)
-
         # Duplicate joint
-        dupName = str(jnt).replace(driver.get_type_from_joint(jnt), chain_type)
+        dupName = jnt.name().replace(utils.get_joint_type(jnt), chain_type)
         dup = pm.duplicate(jnt, n=dupName)[0]
-
         # Set duplicate joint's radius based on chain type
         if chain_type == "FK":
             dupRad = pm.getAttr("{}.radius".format(jnt)) * .65
@@ -29,7 +27,6 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
         else:
             dupRad = pm.getAttr("{}.radius".format(jnt))
         pm.setAttr("{}.radius".format(dup), dupRad)
-
         # Re-parent joints
         if parent is not None:
             pm.parent(jnt, parent)
@@ -52,7 +49,7 @@ class BlendColors(object):
         if self.drivers is None or self.driven is None:
             self.get_driver_driven()
         if self.name is None:
-            self.name = driver.get_name_from_joint(self.driven)
+            self.name = utils.get_info_from_joint(self.driven, name=True)
         self.blendColors = self.get_blend_colors()
 
     def check_connections(self, bc_nodes):
@@ -105,26 +102,38 @@ class BlendColors(object):
 
 # TODO: controls_obj should be dropped in here as well. The object-oriented nature of this will allow
 #  data to be queried more easily
-class Build:
-    def __init__(self, primary_obj, start_jnt=None, chain_len=3, fk=True, ik=True, ik_spline=False):
-        if not fk and not ik:
-            return
-        self.primeObj = primary_obj
-        self.startJoint = start_jnt
-        if self.startJoint is None:
-            self.startJoint = self.primeObj.primaryJoints[0]
-        self.chainLen = chain_len
+class Build(object):
+    def __init__(self, driver_obj=None, fk=True, ik=True, bc=True, spline=True, primary="IK"):
+        if self.driver is not None:
+            self.driver = driver_obj
+            self.name = self.driver.name
+            self.driverJoints = self.driver.driverJoints
+        else:
+            if not pm.ls(sl=1) or pm.ls(sl=1)[0].type() != "joint":
+                pm.warning(f"{pm.ls(sl=1)[0].name()} is not a joint. Please select base joint for your FKIK chain")
+                return
+            self.name = utils.get_info_from_joint(pm.ls(sl=1)[0], name=1)
+            self.driverJoints = utils.get_joints_in_chain(pm.ls(sl=1)[0])
         self.fk = fk
         self.ik = ik
-        self.ikSpline = ik_spline
-        self.name = self.primeObj.name
-        self.primaryChain = self.get_chain_primary()
-        self.fkJointsGrp = self.get_chain_grp(chain_type="FK")
-        self.ikJointsGrp = self.get_chain_grp(chain_type="IK")
-        self.fkChain = self.get_chain(chain_type="FK")
-        self.ikChain = self.get_chain(chain_type="IK")
-        self.blendColors = self.get_blend_colors()
+        self.fkJointsGrp = utils.make_group(f"{self.name}_FK_jnt_grp", parent=utils.make_group("FK_jnt_grp"))
+        self.ikJointsGrp = utils.make_group(f"{self.name}_IK_jnt_grp", parent=utils.make_group("IK_jnt_grp"))
+        self.fkJoints = self.get_chain(chain_type="FK")
+        self.ikJoints = self.get_chain(chain_type="IK")
+        if bc:
+            self.blendColors = self.get_blend_colors()
+        else:
+            srcJnts = self.ikJoints
+            tgtJnts = self.fkJoints
+            if not primary == "IK":
+                srcJnts = self.fkJoints
+                tgtJnts = self.ikJoints
+            for i, jnt in srcJnts:
+                # TODO: this constraint still doesn't successfully reset joints
+                matrix.matrix_constraint(jnt, tgtJnts[i])
+                matrix.matrix_constraint(tgtJnts[i], self.driverJoints[i])
         # TODO: setup IK system
+        # TODO: setup stretch
         self.ikHandleList = None
         self.ikPoleVectorLocList = None
         self.fkPoleVectorProxyList = None
@@ -140,59 +149,34 @@ class Build:
         if not self.fk and not self.ik:
             return None
         bcDict = {}
-        for i, jnt in enumerate(self.primaryChain):
+        for i, jnt in enumerate(self.driverJoints):
             drivers = []
             if self.fk:
-                print("FK driver is {}".format(self.fkChain[i]), type(self.fkChain[i]))
-                drivers.append(self.fkChain[i])
+                drivers.append(self.fkJoints[i])
             if self.ik:
-                print("IK driver is {}".format(self.ikChain[i]), type(self.ikChain[i]))
-                drivers.append(self.ikChain[i])
+                drivers.append(self.ikJoints[i])
             fkik = BlendColors(drivers=drivers, driven=jnt)
             print("{} built".format(fkik))
-            bcDict[str(jnt)] = fkik.blendColors
+            bcDict[jnt.name()] = fkik.blendColors
         return bcDict
 
     def get_chain(self, chain_type="FK"):
         if not self.check_chain_type(chain_type):
             return None
         # Set chain's naming convention
-        name = "{}_{}_jnt".format(self.name, chain_type)
+        name = f"{self.name}_base_{chain_type}_jnt"
         if not pm.ls(name):
             return self.make_chain(chain_type)
         return utils.get_joints_in_chain(pm.PyNode(name))
 
-    def get_chain_grp(self, chain_type="FK"):
-        if not self.check_chain_type(chain_type):
-            return None
-        grpName = "{}_{}_jnts_grp".format(self.name, chain_type)
-        if pm.ls(grpName):
-            return pm.ls(grpName)[0]
-        grp = pm.group(em=1, n=grpName)
-        parent = self.primeObj.subJointsGrp
-        pm.parent(grp, parent)
-        return grp
-
-    def get_chain_primary(self):
-        jntIndex = self.primeObj.primaryJoints.index(self.startJoint)
-        chainEnd = jntIndex + self.chainLen
-        return self.primeObj.primaryJoints[jntIndex:chainEnd]
-
-    def get_joint_primary(self):
-        if "{}_primary_jnts_grp".format(self.name) not in pm.ls():
-            return pm.error("{} primary joint chain does not exist".format(self.name))
-        return pm.listRelatives("{}_prime_jnts_grp".format(self.name), c=1)[0]
-
     def make_chain(self, chain_type="FK"):
-        if not self.check_chain_type(chain_type):
-            return None
         if chain_type == "FK":
             color = 30
             parent = self.fkJointsGrp
         else:
             color = 29
             parent = self.ikJointsGrp
-        newChain = duplicate_chain(self.primaryChain, chain_type, parent)
+        newChain = duplicate_chain(self.driverJoints, chain_type, parent)
         for jnt in newChain:
             jnt.overrideEnabled.set(1)
             jnt.overrideColor.set(color)

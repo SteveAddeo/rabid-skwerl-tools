@@ -3,7 +3,6 @@ import pymel.core as pm
 from core import constants
 from core import utils
 from jnts import fkik
-from jnts import driver
 from rigs import ik
 
 
@@ -19,24 +18,20 @@ def make_base_tip_joints(joint, jnt_type, parent=None):
     # Check to see if joint is able to twist
     if not check_for_child_joint(joint):
         return None
-
     # Call joint's parent and children as variables
     if parent is None:
         parent = utils.get_parent_and_children(joint)[0]
-
     # Create joints to be used as base and tip
     children = utils.get_parent_and_children(joint)[1]
     childJnt = [child for child in children if pm.nodeType(child) == "joint"][0]
     dupChain = fkik.duplicate_chain([joint, childJnt], jnt_type, parent)
     baseJnt = dupChain[0]
     tipJnt = dupChain[1]
-
     # Rename joints
     baseName = str(baseJnt).replace(jnt_type, "{}_base".format(jnt_type))
     tipName = baseName.replace("_base_jnt", "_tip_jnt")
     pm.rename(baseJnt, baseName)
     pm.rename(tipJnt, tipName)
-
     # Zero out tip joint orientation:
     utils.reset_transforms(tipJnt, t=False, s=False)
     for axis in constants.AXES:
@@ -46,13 +41,13 @@ def make_base_tip_joints(joint, jnt_type, parent=None):
 
 
 # TODO: Test the twist Build class
+# TODO: can the twist work by just adding a middle joint to each span and applyting an IK advanced twist setup?
 class Build:
-    def __init__(self, prime_obj):
-        self.primeObj = prime_obj
-        self.twistJointsGrp = driver.get_grp("{}_twist_jnts_grp".format(
-            self.primeObj.name), self.primeObj.subJointsGrp)
-        self.followJointsGrp = driver.get_grp("{}_follow_jnts_grp".format(
-            self.primeObj.name), self.primeObj.subJointsGrp)
+    def __init__(self, driver_obj):
+        self.driver = driver_obj
+        self.mainTwistJointGrp = utils.make_group("twist_jnt_grp", parent="jnt_grp")
+        self.twistJointsGrp = utils.make_group(f"{self.driver.name}_twist_jnt_grp", parent=self.mainTwistJointGrp)
+        self.followJointsGrp = utils.make_group(f"{self.driver.name}_follow_jnt_grp", parent="jnt_grp")
         self.twistJoints = self.get_joints("twist")
         self.followJoints = self.get_joints("follow")
         self.midMultipliers = {}
@@ -82,7 +77,7 @@ class Build:
 
     def get_handles(self):
         hndls = {}
-        for i, jnt in enumerate(self.primeObj.primaryJoints[0:-1]):
+        for i, jnt in enumerate(self.driver.driverJoints[0:-1]):
             hndlName = str(jnt).replace("_base_jnt", "_IK_hndl")
             if pm.ls(hndlName):
                 hndl = pm.ls(hndlName)[0]
@@ -90,7 +85,7 @@ class Build:
                 # TODO: this doesn't appear to be running when it should
                 hndl = self.make_handle(jnt, hndlName)
             if not [c for c in pm.listConnections(hndl, c=1) if pm.nodeType(c[1]) == "pointConstraint"]:
-                pm.pointConstraint(self.primeObj.primaryJoints[i+1], hndl, mo=1)
+                pm.pointConstraint(self.driver.driverJoints[i+1], hndl, mo=1)
             hndls[jnt] = hndl
         return hndls
 
@@ -100,7 +95,7 @@ class Build:
             parentGrp = self.followJointsGrp
         else:
             parentGrp = self.twistJointsGrp
-        for i, jnt in enumerate(self.primeObj.primaryJoints[0:-1]):
+        for i, jnt in enumerate(self.driver.driverJoints[0:-1]):
             grpName = "{}_grp".format(str(jnt).replace("prime", jnt_type))
             jntGrp = pm.ls(grpName)
             # Create a group for the twist joints if one does not exist
@@ -114,9 +109,9 @@ class Build:
                 jntList = self.make_joints(jnt, jntGrp[0], jnt_type)
             if not [child for child in utils.get_parent_and_children(jntGrp[0])[1] if "Constraint" in str(child)]:
                 if i == 0:
-                    pm.pointConstraint(self.primeObj.primaryJoints[i], jntGrp[0], mo=1)
+                    pm.pointConstraint(self.driver.driverJoints[i], jntGrp[0], mo=1)
                 else:
-                    pm.parentConstraint(self.primeObj.primaryJoints[i-1], jntGrp, mo=1)
+                    pm.parentConstraint(self.driver.driverJoints[i-1], jntGrp, mo=1)
             jntsDict[jnt] = jntList
         return jntsDict
 
@@ -137,17 +132,17 @@ class Build:
             up = self.upLocators[prime_jnt][i]
             if i == len(self.twistJoints[prime_jnt]) - 1:
                 aimJnt = self.twistJoints[prime_jnt][0]
-                aimVec = [-v for v in self.primeObj.aimVector]
+                aimVec = [-v for v in self.driver.aimVector]
             else:
                 aimJnt = self.twistJoints[prime_jnt][-1]
-                aimVec = self.primeObj.aimVector
-            upV = self.primeObj.upVector
+                aimVec = self.driver.aimVector
+            upV = self.driver.upVector
             aim = pm.aimConstraint(aimJnt, jnt, aim=aimVec, u=upV, wuo=up, wut="objectrotation")
             aimConsts.append(aim)
         return aimConsts
 
     def make_handle(self, joint, name):
-        ikObj = ik.Build(self.primeObj, self.twistJoints[joint], handle_name=name)
+        ikObj = ik.Build(self.driver, self.twistJoints[joint], handle_name=name)
         print(ikObj.handles)
         return ikObj.handles[0]
 
@@ -197,7 +192,7 @@ class Build:
         upLocs = []
         for jnt in self.twistJoints[prime_jnt]:
             loc = pm.spaceLocator(n=str(jnt).replace("_jnt", "_up_loc"))
-            pm.move(loc, [(v * self.primeObj.guidesObj.scale * .2) for v in self.primeObj.upVector], r=1, os=1)
+            pm.move(loc, [(v * self.driver.guidesObj.scale * .2) for v in self.driver.upVector], r=1, os=1)
             pm.makeIdentity(loc, a=1)
             offsetGrp = utils.make_offset_groups([loc])[0]
             pm.parent(offsetGrp, jnt)
@@ -211,7 +206,7 @@ class Build:
         return upLocs
 
     def set_mid_up(self, mid_jnt, mid_loc):
-        axis = self.primeObj.orientation[0].upper()
+        axis = self.driver.orientation[0].upper()
         primeJnt = self.get_prime_from_twist(mid_jnt)
         offsetGrp = utils.get_parent_and_children(mid_loc)[0]
         # Create a multiply node to have the rotation of the mid joint be 1/2 of the pirme joint

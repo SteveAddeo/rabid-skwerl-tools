@@ -1,49 +1,30 @@
 import pymel.core as pm
 import maya.api.OpenMaya as api
 from core import constants
+from core import utils
 
 
-def get_grp(grp_name, parent=None):
-    if pm.ls(grp_name):
-        return pm.ls(grp_name)[0]
-    grp = pm.group(em=1, n=grp_name)
-    if parent is not None:
-        pm.parent(grp, parent)
-    return grp
-
-
-def get_name_from_joint(joint):
-    if "_drv_jnt" in str(joint):
-        return str(joint).replace("_drv_jnt", "")
-    if "_jnt" in str(joint):
-        return str(joint).replace("_jnt", "")
-    return str(joint)
-
-
-def get_type_from_joint(joint):
-    jointType = str(joint).split("_")[-2]
-    subTypes = ["base", "mid", "tip"]
-    if jointType in subTypes:
-        jointType = "_".join([str(joint).split("_")[-3], jointType])
-    return jointType
-
-
+# TODO: Continue test refactor
 class Build(object):
     def __init__(self, guides_obj, orientation="xyz", invert=False, orient_tip=True, orient_chain_to_world=False):
-        self.guidesObj = guides_obj
-        self.name = self.guidesObj.name
-        self.guides = self.guidesObj.allGuides
+        self.guides = guides_obj
+        self.name = self.guides.name
+        self.guides = self.guides.allGuides
         self.orientation = orientation
-        self.invert = invert
+        # TODO: change invert to mirror
+        self.mirror = invert
         self.orientTip = orient_tip
         self.orientToWorld = orient_chain_to_world
-        self.mainJointsGrp = get_grp("jnts_grp")
-        self.subJointsGrp = get_grp("{}_jnt_grp".format(self.name), parent=self.mainJointsGrp)
-        self.driverJointsGrp = get_grp("{}_drv_jnt_grp".format(self.name), parent=self.subJointsGrp)
+        self.rigGrp = utils.make_group("rig_grp_DO_NOT_TOUCH")
+        self.mainJointsGrp = utils.make_group("jnt_grp", parent=self.rigGrp)
+        # self.subJointsGrp = utils.make_group(f"{self.name}_jnt_grp", parent=self.mainJointsGrp)
+        self.driverJointsGrp = utils.make_group(f"{self.name}_drv_jnt_grp", parent=self.mainJointsGrp)
         self.aimVector = self.get_vector_from_axis(self.orientation[0].capitalize())
         self.upVector = self.get_vector_from_axis(self.orientation[1].capitalize())
         self.tertiaryVector = self.get_vector_from_axis(self.orientation[2].capitalize())
         self.driverJoints = self.get_driver_joints()
+        self.crv = utils.make_curve_from_chain(self.driverJoints[0])
+        self.crvInfo = pm.PyNode(f"{self.crv.name()}_info")
         self.longAxis = self.get_long_axis()
         self.check_rotation(self.driverJoints)
 
@@ -104,6 +85,12 @@ class Build(object):
         return jnts
 
     def get_long_axis(self, joint=None):
+        """
+        Gets the general world space direction a joint is pointing towards. Often joints do not align
+        with a singular axis in world space; this method determines which direction the joint most closely
+        aligns with
+        :param joint: joint being queried
+        """
         if joint is None:
             joint = self.driverJoints[0]
         aimWM = pm.xform(joint, q=1, m=1, ws=1)
@@ -122,7 +109,7 @@ class Build(object):
 
     def get_vector_from_axis(self, axis="X"):
         vector = constants.get_axis_vector(axis)
-        if self.invert:
+        if self.mirror:
             vector = [-v for v in vector]
         return vector
 
@@ -137,7 +124,7 @@ class Build(object):
         for guide in self.guides:
             jntName = str(guide).replace("_guide", "_drv_jnt")
             jntPos = pm.xform(guide, q=1, ws=1, rp=1)
-            jntRad = self.guidesObj.scale * .1
+            jntRad = self.guides.scale * .1
             jnt = pm.joint(n=jntName, p=jntPos, roo=self.orientation, rad=jntRad)
             pm.setAttr("{}.overrideEnabled".format(jntName), 1)
             pm.setAttr("{}.overrideColor".format(jntName), 1)
@@ -210,8 +197,3 @@ class Build(object):
             else:
                 self.orient_mid_joints(jnt, i, jnt_list=joints)
         pm.parent(joints[0], self.driverJointsGrp)
-
-
-
-
-
