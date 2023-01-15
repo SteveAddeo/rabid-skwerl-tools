@@ -22,68 +22,6 @@ def make_dist(jnts, ctl=None):
     return dist
 
 
-def make_ik_stretch(name, jnts, ctl, aim, switch):
-    # Create IK stretch
-    ikScaleMult = utils.check_shading_node(f"{name}_IK_scale_mult", "multDoubleLinear")
-    ikStretchVal = utils.check_shading_node(f"{name}_IK_stretch_val", "multiplyDivide")
-    cond = utils.check_shading_node(f"{name}_IK_str_cond", "condition")
-    chainLen = utils.get_length_of_chain(jnts[0], aim)
-    dist = make_dist(jnts, ctl)
-    # Set Attribute Values
-    ikScaleMult.input1.set(chainLen)
-    ikStretchVal.operation.set(2)
-    cond.secondTerm.set(1)
-    cond.operation.set(2)
-    # Connect Nodes
-    pm.connectAttr("local_scale_mult.output", ikScaleMult.input2, f=1)
-    pm.connectAttr(dist.distance, ikStretchVal.input1X, f=1)
-    pm.connectAttr(ikStretchVal.outputX, cond.firstTerm, f=1)
-    pm.connectAttr(ikStretchVal.outputX, cond.colorIfTrueR, f=1)
-    pm.connectAttr(ikStretchVal.outputX, switch.colorIfTrueR, f=1)
-
-
-def set_ik_jnt_scale(name, jnts, ctl, aim, spline=True):
-    # Create nodes
-    switch = utils.check_shading_node(f"{name}_stretch_sw", "condition")
-    ikJnts = utils.get_joints_in_chain(pm.PyNode(f"{name}_base_IK_jnt"))
-    stretchVal = utils.check_shading_node(f"{name}_stretch_val", "multiplyDivide")
-    # Make connections
-    pm.connectAttr(stretchVal.outputX, switch.colorIfTrueR, f=1)
-    for jnt in ikJnts:
-        pm.connectAttr(switch.outColorR, jnt.scaleX, f=1)
-    if not spline:
-        make_ik_stretch(name, jnts, ctl, aim, switch)
-
-
-def set_skin_jnt_scale(name, crv_info, skin_jnts):
-    # Create Nodes
-    stretchVal = utils.check_shading_node(f"{name}_stretch_val", "multiplyDivide")
-    scaleMult = utils.check_shading_node(f"{name}_scale_mult", "multDoubleLinear")
-    squashVal = utils.check_shading_node(f"{name}_squash_val", "multiplyDivide")
-    squashDiv = utils.check_shading_node(f"{name}_squash_div", "multiplyDivide")
-    stretchMult = utils.check_shading_node(f"{name}_stretch_scale_mult", "multDoubleLinear")
-    arcLength = crv_info.arcLength.get()
-    # Set Attribute Values
-    stretchVal.operation.set(2)
-    scaleMult.input1.set(arcLength)
-    squashVal.operation.set(3)
-    squashVal.input2X.set(0.5)
-    squashDiv.operation.set(2)
-    squashDiv.input1X.set(1)
-    # Connect Nodes
-    pm.connectAttr("local_scale_mult.output", scaleMult.input2, f=1)
-    pm.connectAttr(crv_info.arcLength, stretchVal.input1X, f=1)
-    pm.connectAttr(scaleMult.output, stretchVal.input2X, f=1)
-    pm.connectAttr(stretchVal.outputX, squashVal.input1X, f=1)
-    pm.connectAttr(squashVal.outputX, squashDiv.input2X, f=1)
-    pm.connectAttr(squashDiv.outputX, stretchMult.input1, f=1)
-    pm.connectAttr(scaleMult.input2, stretchMult.input2, f=1)
-    for jnt in skin_jnts:
-        pm.connectAttr(scaleMult.input2, jnt.scaleX, f=1)
-        pm.connectAttr(stretchMult.output, jnt.scaleY, f=1)
-        pm.connectAttr(stretchMult.output, jnt.scaleZ, f=1)
-
-
 # TODO: skin object is any class that creates skin joints (currently only ribbon class does this)
 class Build(object):
     def __init__(self, driver_obj, ctls_obj, ik_obj, skin_obj):

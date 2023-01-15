@@ -32,9 +32,11 @@ def set_sine_lock_end(hndl):
 #############
 
 def check_shading_node(name, node_type):
+    print(f"name is {name}")
     if pm.ls(name):
         return pm.PyNode(name)
     node = pm.shadingNode(node_type, n=name, au=1)
+    return node
 
 
 #############
@@ -182,8 +184,9 @@ def make_curve_from_chain(joint, name=None):
     # Group the curve
     grp = make_group(f"{name}_grp", child=crv, parent=make_group("crv_grp", parent=make_group("utils_grp")))
     pm.xform(grp, t=pm.xform(joint, q=1, ws=1, rp=1))
+    pm.skinCluster(jnts, crv, n=f"{crv.name()}_skinCluster", tsb=True, bm=0, sm=0, nw=1)
     # Create a curve info node
-    info = pm.shadingNode("curveInfo", n=f"{name}_info", au=1)
+    info = check_shading_node(f"{name}_info", "curveInfo")
     pm.connectAttr(crv.worldSpace[0], info.inputCurve)
     return crv
 
@@ -193,6 +196,7 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
     for jnt in jnt_chain:
         parent = get_parent_and_children(jnt)[0]
         children = get_parent_and_children(jnt)[1]
+        print(jnt, parent, children)
         # Unparent the joint and any children it may have
         if parent is not None:
             pm.parent(jnt, w=1)
@@ -255,19 +259,33 @@ def freeze_transforms(nodes=None):
     return nodes
 
 
-def reset_transforms(node, t=True, r=True, s=True, o=True):
-    # TODO: Check for connections
+def reset_transforms(node, t=True, r=True, s=True, m=True, o=True):
     for axis in constants.AXES:
-        if t and node.type != "joint":
-            pm.setAttr(f"{node.name()}.translate{axis}", 0)
+        if t:
+            try:
+                pm.setAttr(f"{node.name()}.translate{axis}", 0)
+            except RuntimeError as e:
+                print(e)
         if r:
-            pm.setAttr(f"{node.name()}.rotate{axis}", 0)
+            try:
+                pm.setAttr(f"{node.name()}.rotate{axis}", 0)
+            except RuntimeError as e:
+                print(e)
         if s:
-            pm.setAttr(f"{node.name()}.scale{axis}", 1)
-        if o:
-            node.offsetParentMatrix.set(constants.FROZENMTRX)
-        if node.type() == "joint":
-            pm.setAttr(f"{node.name()}.jointOrient{axis}", 0)
+            try:
+                pm.setAttr(f"{node.name()}.scale{axis}", 1)
+            except RuntimeError as e:
+                print(e)
+        if m:
+            try:
+                node.offsetParentMatrix.set(constants.FROZENMTRX)
+            except RuntimeError as e:
+                print(e)
+        if o and node.type() == "joint":
+            try:
+                pm.setAttr(f"{node.name()}.jointOrient{axis}", 0)
+            except RuntimeError as e:
+                print(e)
 
 
 def toggle_inherits_transform(nodes):

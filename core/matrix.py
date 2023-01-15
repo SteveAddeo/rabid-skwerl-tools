@@ -14,6 +14,7 @@ def matrix_constraint(driver, driven):
     # TODO: this works so far but it offsets the driven. Transform data needs
     #  to be cleared (including joint orientation data if applicable) and
     #  object needs to be repositioned.
+    utils.reset_transforms(driven, m=False)
 
 
 def worldspace_to_matrix(obj, source):

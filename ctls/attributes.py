@@ -37,6 +37,19 @@ def make_ribbon_def_attrs(node, def_type):
                 newAttr.setMax(a[attr][5])
 
 
+def make_spline_attrs(node, base="Base", tip="Tip", mid=False, head=False):
+    pm.addAttr(node, ln="space", nn="________", at="enum", en="________", k=1)
+    if mid:
+        pm.addAttr(node, ln="follow", nn="Follow", at="enum", en=f"Both:{tip}:{base}:World", k=1)
+    else:
+        pm.addAttr(node, ln="stretch", nn="Stretch", s=1, at="byte", min=0, max=1, k=1)
+    pm.addAttr(node, ln="arch", nn="Arch", s=1, at="float", min=0.0, max=3.0, k=1)
+    if head:
+        pm.addAttr(node, ln="inherit", nn="________", at="enum", en="INHERIT", k=1)
+        pm.addAttr(node, ln="position", nn="Position", s=1, at="float", min=0.0, max=1.0, k=1)
+        pm.addAttr(node, ln="orientation", nn="Orientation", s=1, at="float", min=0.0, max=1.0, k=1)
+
+
 class Add:
     def __init__(self, ctls_obj, rig_type):
         self.ctlsObj = ctls_obj

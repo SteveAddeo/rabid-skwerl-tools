@@ -3,8 +3,16 @@ from core import constants
 from core import utils
 
 
+SIDES = {"LT": "RT_",
+         "RT": "LT_",
+         "FT": "BK_",
+         "BK": "FT_",
+         "TP": "BT_",
+         "BT": "TP_"}
+
+
 def get_guides_from_group(group):
-    guides = [node for node in reversed(pm.listRelatives(group, ad=1)) if node.name.split("_")[-1] == "guide"]
+    guides = [node for node in reversed(pm.listRelatives(group, ad=1)) if node.name().split("_")[-1] == "guide"]
     if not guides:
         return None
     return guides
@@ -17,16 +25,23 @@ def make_object_from_group(group):
     return obj
 
 
-class Build:
-    def __init__(self, name, chain_len=3, axis="X", scale=10):
-        self.name = name
+class Build(object):
+    def __init__(self, name, side, chain_len=3, axis="X", scale=10,
+                 invert=False, mirror=False, mirror_axis="X", link=False):
+        self.name = f"{side}_{name}"
+        self.side = side
         self.chainLength = chain_len
         self.axis = axis
         self.scale = scale
+        self.invert = invert
+        self.mirror = mirror
+        self.mirrorAxis = mirror_axis
         self.mainGuidesGrp = utils.make_group("guides_grp")
         self.guidesGrp = utils.make_group(f"{self.name}_guides_grp", parent=self.mainGuidesGrp)
         self.allGuides = self.get_guides()
         self.curve = self.make_guides_curve()
+        if link:
+            self.linkGuides = self.link_guides()
 
     def get_guides(self):
         if pm.listRelatives(self.guidesGrp, c=1):
@@ -47,18 +62,38 @@ class Build:
             guideName = f"{self.name}_mid{str(i).zfill(2)}_guide"
         return guideName
 
+    def link_guides(self):
+        linkGuides = []
+        for guide in [guide for guide in self.allGuides
+                      if pm.ls(guide.name().replace(f"{self.side}_", SIDES[self.side]))]:
+            linkGuide = pm.PyNode(guide.name().replace(f"{self.side}_", SIDES[self.side]))
+            linkGuides.append(linkGuide)
+            decMtrx = utils.check_shading_node(linkGuide.name().replace("_guide", "_mtrx"), "decomposeMatrix")
+            mult = utils.check_shading_node(linkGuide.name().replace("_guide", "_mult"), )
+            if guide.name().split("_")[-2] == "base":
+                eval(f"mult.input2{self.mirrorAxis}.set(-1)")
+            else:
+                for axis in [axis for axis in constants.AXES if axis != self.mirrorAxis]:
+                    eval(f"mult.input2{axis}.set(-1)")
+            pm.connectAttr(linkGuide.matrix, decMtrx.inputMatrix, f=1)
+            pm.connectAttr(decMtrx.outputTranslate, mult.input1, f=1)
+            pm.connectAttr(mult.output, guide.translate, f=1)
+        return linkGuides
+
     def make_guides(self):
         guidesList = []
         prevGuide = None
         scale = self.scale
-        if not self.axis == "X":
+        if self.mirror and not self.invert:
+            scale = -scale
+        if self.invert and not self.mirror:
             scale = -scale
         for i in range(self.chainLength):
             guideName = self.get_guide_name(i)
             # Create and position the locator
             guide = pm.spaceLocator(n=guideName)
             guidesList.append(guide)
-            pm.setAttr(f"{guide}.translate{self.axis}", i * scale)
+            pm.setAttr(f"{guide}.translate{self.axis}", (i * scale) + (0.1 * scale))
             # Lock attributes you don't want to be changed so the rig is built properly
             for v in constants.AXES:
                 pm.setAttr(f"{guide}.rotate{v}", lock=True, keyable=False, channelBox=False)

@@ -2,7 +2,6 @@ import pymel.core as pm
 
 from core import constants
 from core import utils
-from jnts import fkik
 from rigs import ik
 
 
@@ -24,7 +23,7 @@ def make_base_tip_joints(joint, jnt_type, parent=None):
     # Create joints to be used as base and tip
     children = utils.get_parent_and_children(joint)[1]
     childJnt = [child for child in children if pm.nodeType(child) == "joint"][0]
-    dupChain = fkik.duplicate_chain([joint, childJnt], jnt_type, parent)
+    dupChain = utils.duplicate_chain([joint, childJnt], jnt_type, parent)
     baseJnt = dupChain[0]
     tipJnt = dupChain[1]
     # Rename joints

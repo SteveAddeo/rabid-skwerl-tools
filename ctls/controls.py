@@ -239,7 +239,35 @@ def make_fkik(name=None, scale=10.0, aim="Z"):
 
 # TODO: build controls from driver skeleton
 class Build(object):
-    def __init__(self, driver_obj):
+    def __init__(self, driver_obj, fk=True, ik=True, spline=False, mid=1):
         self.driver = driver_obj
+        self.name = self.driver.name
+        self.fk = fk
+        self.ik = ik
+        self.spline = spline
+        if self.spline:
+            self.mid = mid
+        self.ctls = {"FK": [],
+                     "IK": [],
+                     "Tweak": []}
 
+    def set_ik_mid_follow(self):
+        # TODO: get to work with one mid ctl
+        # TODO: figure out how to apply to two mid ctls (they can go fuck themselves if they want more XD)
+        both = pm.shadingNode("condition", n="CT_neck_mid01_both_cond", au=1)
+        tip = pm.shadingNode("condition", n="CT_neck_mid01_tip_cond", au=1)
+        base = pm.shadingNode("condition", n="CT_neck_mid01_base_cond", au=1)
+        world = pm.shadingNode("condition", n="CT_neck_mid01_world_cond", au=1)
+        weights = pm.parentConstraint("CT_neck_mid01_IK_ctl_grp_parentConstraint1", q=1, wal=1)
+        for node in [both, tip, base, world]:
+            node.colorIfTrueR.set(1)
+            node.colorIfFalseR.set(0)
+        both.colorIfTrueG.set(1)
+        both.colorIfFalseG.set(0)
+        tip.secondTerm.set(1)
+        base.secondTerm.set(2)
+        world.secondTerm.set(3)
+        pm.connectAttr(both.outColorR, weights[0])
+        pm.connectAttr(both.outColorG, weights[1])
+        pm.connectAttr(both.outColorB, weights[2])
 
