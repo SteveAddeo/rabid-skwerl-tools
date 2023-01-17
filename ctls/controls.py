@@ -1,11 +1,91 @@
 import os
 import pymel.core as pm
 from core import constants
+from core import matrix
 from core import utils
 
 
 SHAPES = utils.get_data_from_json(os.path.join(utils.RSTPATH, "rabid-skwerl-tools", "ctls", "shapes.json"))
 
+
+###################
+# Joints
+###################
+
+def make_limb_control_joints(jnts, twist_jnt=None, mid=True):
+    grp = utils.make_group(f"{utils.get_info_from_joint(jnts[0], name=True)}_ctl_jnt_grp",
+                           parent=utils.make_group(f"{utils.get_info_from_joint(jnts[0], name=True)}_ctl_grp",
+                                                   parent=utils.make_group("ctl_grp")))
+    ctlJnts = []
+    for i, jnt in enumerate(jnts[:-1]):
+        span = utils.get_span(i, jnts)
+        spanGrp = utils.make_group(f"{utils.get_info_from_joint(jnts[0], name=True)}_{span}_ctl_jnt_grp", parent=grp)
+        baseJnt = utils.duplicate_chain([jnt], "ctl", spanGrp)[0]
+        pm.rename(baseJnt, baseJnt.name().replace(baseJnt.name().split("_")[-3], f"{span}01"))
+        baseGrp = utils.make_group(f"{baseJnt.name()}_grp", parent=spanGrp)
+        if i == 0 and twist_jnt is not None:
+            matrix.matrix_constraint(twist_jnt, baseGrp)
+        else:
+            matrix.matrix_constraint(jnt, baseGrp)
+        pm.parent(baseJnt, baseGrp)
+        utils.reset_transforms(baseGrp, m=False)
+        pm.xform(baseGrp, t=pm.xform(jnt, q=1, ws=1, rp=1))
+        ctlJnts.append(baseJnt)
+        r = 2
+        if not mid:
+            r = 1
+        for n in range(r):
+            jGrp = utils.make_group(baseGrp.name().replace(f"{span}01", f"{span}0{str(n+2)}"), parent=spanGrp)
+            pm.xform(jGrp, t=pm.xform(jnt, q=1, ws=1, rp=1))
+            matrix.matrix_constraint(jnt, jGrp)
+            utils.reset_transforms(jGrp, m=False)
+            j = pm.duplicate(baseJnt, n=baseJnt.name().replace(f"{span}01", f"{span}0{str(n+2)}"))[0]
+            j.radius.set(j.radius.get() * 3.5)
+            pm.parent(j, jGrp)
+            utils.reset_transforms(j)
+            pm.xform(j, t=pm.xform(jnts[i + 1], q=1, ws=1, rp=1))
+            pm.makeIdentity(j, a=1)
+            ctlJnts.append(j)
+        # TODO: this is still broken. Reset transforms don't seem to be getting applied properly
+        """if mid:
+            midJnt = pm.duplicate(baseJnt, n=baseJnt.name().replace(f"{span}01", f"{span}02"))[0]
+            tipJnt = pm.duplicate(baseJnt, n=baseJnt.name().replace(f"{span}01", f"{span}03"))[0]
+            pm.xform(tipJnt, t=pm.xform(jnts[i + 1], q=1, ws=1, rp=1))
+            pt = pm.pointConstraint([baseJnt, tipJnt], midJnt)
+            pm.delete(pt)
+            for j in [midJnt, tipJnt]:
+                jGrp = pm.group(n=f"{j.name()}_grp", em=1)
+                pm.parent(jGrp, spanGrp)
+                pm.xform(jGrp, t=pm.xform(jnt, q=1, ws=1, rp=1))
+                pm.parent(j, jGrp)
+                ctlJnts.append(j)
+                jntGrps.append(jGrp)
+        else:
+            tipJnt = pm.duplicate(baseJnt, n=baseJnt.name().replace(f"{span}01", f"{span}02"))[0]
+            pm.xform(tipJnt, t=pm.xform(jnts[i + 1], q=1, ws=1, rp=1))
+            tipGrp = pm.group(n=f"{tipJnt.name()}_grp", em=1)
+            pm.parent(tipGrp, spanGrp)
+            pm.xform(tipGrp, t=pm.xform(jnt, q=1, ws=1, rp=1))
+            pm.parent(tipJnt, tipGrp)
+            ctlJnts.append(tipJnt)
+            jntGrps.append(tipGrp)
+            
+            
+            
+        for jntGrp in jntGrps:
+            j = pm.listRelatives(jntGrp, c=1)[0]
+            j.radius.set(j.radius.get() * 3.5)
+            if i == 0 and twist_jnt is not None:
+                matrix.matrix_constraint(twist_jnt, jntGrp)
+            else:
+                matrix.matrix_constraint(jnts[i], jntGrp)
+            # utils.reset_transforms(j, m=False)"""
+    return ctlJnts
+
+
+###################
+# Shapes
+###################
 
 def make_shape(name=None, scale=10.0, shape="Cube", rot90=False, mirror_x=False):
     if name is None:
@@ -62,36 +142,6 @@ def resize_cube(cube, length, aim="X"):
             length = -length
         offset[constants.get_axis_index(aim)] = length
         pm.xform(cv, ws=1, t=offset)
-
-
-def make_global_controls(scale=10):
-    # Create Controls and groups
-    trs = make_trs("global_ctl", scale)
-    loc = make_circle("loc_ctl", 3*scale, aim="Y")
-    cog = make_cog("root_ctl", .6 * scale)
-    grp = utils.make_group("global_ctl_grp", trs)
-    utils.make_group("ctl_grp", grp)
-    pm.parent(cog, loc)
-    pm.parent(loc, trs)
-    # Set the rotation order and lock the X & Z scale axis to the Y df each controls
-    ctls = [trs, loc, cog]
-    for ctl in ctls:
-        ctl.rotateOrder.set(2)
-        pm.connectAttr(ctl.scalY, ctl.scaleX)
-        pm.connectAttr(ctl.scaleY, ctl.scaleX)
-        # Color the shape nodes
-        for shape in ctl.getShapes():
-            shape.overrideEnabled.set(1)
-            shape.overrideColor.set(17)
-    # Add scale multipliers to scale the driver joints and
-    gMult = pm.shadingNode("multDoubleLinear", n="global_scale_mult", au=1)
-    lMult = pm.shadingNode("multDoubleLinear", n="local_scale_mult", au=1)
-    # Connect the nodes
-    pm.connectAttr(trs.scaleY, gMult.input1, f=1)
-    pm.connectAttr(cog.scaleY, gMult.input2, f=1)
-    pm.connectAttr(gMult.output, lMult.input1, f=1)
-    pm.connectAttr(cog.scaleY, lMult.input2, f=1)
-    # TODO: add attributes to controls
 
 
 def make_gimbal(name=None, scale=10.0, aim="X", angle="Z", invert=False):
@@ -237,6 +287,40 @@ def make_fkik(name=None, scale=10.0, aim="Z"):
     return [ctl, fkShapes, ikShapes, lineShapes]
 
 
+###################
+# Rig Setups
+###################
+
+def make_global_controls(scale=10):
+    # Create Controls and groups
+    trs = make_trs("global_ctl", scale)
+    loc = make_circle("loc_ctl", 3*scale, aim="Y")
+    cog = make_cog("root_ctl", .6 * scale)
+    grp = utils.make_group("global_ctl_grp", trs)
+    utils.make_group("ctl_grp", grp)
+    pm.parent(cog, loc)
+    pm.parent(loc, trs)
+    # Set the rotation order and lock the X & Z scale axis to the Y df each controls
+    ctls = [trs, loc, cog]
+    for ctl in ctls:
+        ctl.rotateOrder.set(2)
+        pm.connectAttr(ctl.scalY, ctl.scaleX)
+        pm.connectAttr(ctl.scaleY, ctl.scaleX)
+        # Color the shape nodes
+        for shape in ctl.getShapes():
+            shape.overrideEnabled.set(1)
+            shape.overrideColor.set(17)
+    # Add scale multipliers to scale the driver joints and
+    gMult = pm.shadingNode("multDoubleLinear", n="global_scale_mult", au=1)
+    lMult = pm.shadingNode("multDoubleLinear", n="local_scale_mult", au=1)
+    # Connect the nodes
+    pm.connectAttr(trs.scaleY, gMult.input1, f=1)
+    pm.connectAttr(cog.scaleY, gMult.input2, f=1)
+    pm.connectAttr(gMult.output, lMult.input1, f=1)
+    pm.connectAttr(cog.scaleY, lMult.input2, f=1)
+    # TODO: add attributes to controls
+
+
 # TODO: build controls from driver skeleton
 class Build(object):
     def __init__(self, driver_obj, fk=True, ik=True, spline=False, mid=1):
@@ -267,7 +351,7 @@ class Build(object):
         tip.secondTerm.set(1)
         base.secondTerm.set(2)
         world.secondTerm.set(3)
-        pm.connectAttr(both.outColorR, weights[0])
-        pm.connectAttr(both.outColorG, weights[1])
-        pm.connectAttr(both.outColorB, weights[2])
+        pm.connectAttr(both.outColorR, weights[0], f=1)
+        pm.connectAttr(both.outColorG, weights[1], f=1)
+        pm.connectAttr(both.outColorB, weights[2], f=1)
 

@@ -141,7 +141,6 @@ class Build(object):
             if self.ik:
                 drivers.append(self.ikJoints[i])
             fkik = BlendColors(drivers=drivers, driven=jnt)
-            print("{} built".format(fkik))
             bcDict[jnt.name()] = fkik.blendColors
         return bcDict
 

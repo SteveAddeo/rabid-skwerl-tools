@@ -10,11 +10,13 @@ def matrix_constraint(driver, driven):
         pm.connectAttr(parent.parentInverseMatrix[0], mult.matrixIn[1], f=1)
         pm.connectAttr(mult.matrixSum, driven.offsetParentMatrix, f=1)
     else:
+        mult = None
         pm.connectAttr(driver.worldMatrix[0], driven.offsetParentMatrix, f=1)
     # TODO: this works so far but it offsets the driven. Transform data needs
     #  to be cleared (including joint orientation data if applicable) and
     #  object needs to be repositioned.
     utils.reset_transforms(driven, m=False)
+    return mult
 
 
 def worldspace_to_matrix(obj, source):

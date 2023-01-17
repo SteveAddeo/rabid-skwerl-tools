@@ -69,7 +69,7 @@ class Build(object):
             linkGuide = pm.PyNode(guide.name().replace(f"{self.side}_", SIDES[self.side]))
             linkGuides.append(linkGuide)
             decMtrx = utils.check_shading_node(linkGuide.name().replace("_guide", "_mtrx"), "decomposeMatrix")
-            mult = utils.check_shading_node(linkGuide.name().replace("_guide", "_mult"), )
+            mult = utils.check_shading_node(linkGuide.name().replace("_guide", "_mult"), "multiplyDivide")
             if guide.name().split("_")[-2] == "base":
                 eval(f"mult.input2{self.mirrorAxis}.set(-1)")
             else:

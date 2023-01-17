@@ -4,19 +4,33 @@ from core import constants
 from core import utils
 
 
-def make_handle(start, end, name=None):
+SOLVERS = {"rotatePlane": "ikRPsolver",
+           "singleChain": "ikSCsolver",
+           "spline": "ikSplineSolver",
+           "spring": "ikSpringSolver"}
+
+
+def make_handle(start, end, name=None, solver="rotatePlane", spline_crv=None):
     if name is None:
-        name = str(start).replace("_jnt", "_hndl")
-    hndl = pm.ikHandle(n=name, sj=start, ee=end)
+        name = start.name().replace("_jnt", "_hndl")
+    solver = SOLVERS[solver]
+    if solver == "ikSplineSolver":
+        if spline_crv is not None:
+            hndl = pm.ikHandle(n=name, sj=start, ee=end, sol=solver, c=spline_crv, ccv=0, pcv=0)
+        else:
+            pm.warning(f"{name} needs a spline curve to build a spline IK setup")
+            return None
+    else:
+        hndl = pm.ikHandle(n=name, sj=start, ee=end, sol=solver)
+    for a in constants.AXES:
+        eval(f"hndl[0].poleVector{a}.set(0)")
     return hndl
 
 
-# TODO: Class should receive ikfk_obj
 class Build:
-    def __init__(self, driver_obj, ikfk_obj, handle_name=None, ctls_obj=None, spline=False):
+    def __init__(self, driver_obj, jnts, handle_name=None, ctls_obj=None, spline=False):
         self.driver = driver_obj
-        self.ikfk = ikfk_obj
-        self.joints = self.ikfk.ikJoints
+        self.joints = jnts
         self.handleName = self.get_name(handle_name)
         self.ctlsObj = ctls_obj
         self.spline = spline
@@ -37,20 +51,20 @@ class Build:
     def get_name(self, name):
         if name is not None:
             return name
-        return str(self.jntChain[0]).replace("_jnt", "_IK_hndl")
+        return self.joints[0].name().replace("_jnt", "_IK_hndl")
 
     def get_pole_vectors(self):
         return "poleVectors"
 
     def make_ik_system(self):
-        if len(self.jntChain) == 2:
-            hndlList = [pm.ikHandle(n=self.handleName, sj=self.jntChain[0], ee=self.jntChain[-1])[0]]
+        if len(self.joints) == 2:
+            hndlList = [pm.ikHandle(n=self.handleName, sj=self.joints[0], ee=self.joints[-1])[0]]
             if self.ctlsObj is None:
                 for axis in constants.AXES:
                     pm.setAttr(f"{hndlList[0]}.poleVector{axis}", 0)
-        elif len(self.jntChain) == 3 and not self.spline:
+        elif len(self.joints) == 3 and not self.spline:
             pass
-        elif len(self.jntChain) == 4 and not self.spline:
+        elif len(self.joints) == 4 and not self.spline:
             pass
         else:
             pass

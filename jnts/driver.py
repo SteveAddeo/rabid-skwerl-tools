@@ -2,13 +2,15 @@ import pymel.core as pm
 import maya.api.OpenMaya as om
 from core import constants
 from core import utils
+from jnts import twist
 
 
-# TODO: Continue test refactor
 class Build(object):
-    def __init__(self, guides_obj, orientation="xyz", orient_tip=True,
-                 orient_base_to_world=True, orient_chain_to_world=False):
+    # TODO: Orient base to world needs more testing
+    def __init__(self, guides_obj, spline=False, orientation="xyz", orient_tip=True,
+                 orient_base_to_world=True, orient_chain_to_world=False, make_twist=False):
         self.guides = guides_obj
+        self.spline = spline
         self.name = self.guides.name
         self.orientation = orientation
         self.orientTip = orient_tip
@@ -22,10 +24,13 @@ class Build(object):
         self.upVector = self.get_vector_from_axis(self.orientation[1].capitalize())
         self.tertiaryVector = self.get_vector_from_axis(self.orientation[2].capitalize())
         self.driverJoints = self.make_driver_chain()
+        self.upLoc = self.make_up_loc()
         self.crv = utils.make_curve_from_chain(self.driverJoints[0])
         self.crvInfo = pm.PyNode(f"{self.crv.name()}_info")
         self.longAxis = self.get_long_axis()
         self.check_rotation(self.driverJoints)
+        if make_twist:
+            self.twistObj = twist.Build(self.driverJoints[0], self.upVector)
 
     def check_rotation(self, joints=None, long_axis=None):
         if joints is None:
@@ -126,11 +131,26 @@ class Build(object):
         self.check_rotation(jntList, longAxis)
         return jntList
 
-    def orient_joint(self, joint, aim_obj, up_obj=None):
+    def make_up_loc(self):
+        if pm.ls(f"{self.name}_up_loc"):
+            return pm.PyNode(f"{self.name}_up_loc")
+        loc = pm.spaceLocator(n=f"{self.name}_up_loc")
+        pt = pm.pointConstraint(self.driverJoints[0], loc)
+        ornt = pm.orientConstraint(self.driverJoints[0], loc)
+        pm.delete(pt, ornt)
+        pm.move(loc, [-v * (self.guides.scale * .2) for v in self.tertiaryVector], r=1, os=1)
+        return loc
+
+    def orient_joint(self, joint, aim_obj, up_obj=None, local=False, neg=False):
+        up = self.upVector
+        if local:
+            up = [v * -1 for v in self.tertiaryVector]
+        if neg:
+            up = [v * -1 for v in up]
         if up_obj is None:
-            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimVector, u=self.upVector, wut="vector")
+            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimVector, u=up, wut="vector")
         else:
-            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimVector, u=self.upVector, wut="object", wuo=up_obj)
+            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimVector, u=up, wut="object", wuo=up_obj)
         pm.delete(aimConst)
         pm.makeIdentity(joint, a=1)
 
@@ -139,8 +159,10 @@ class Build(object):
             joint = self.driverJoints[0]
         if jnt_list is None:
             jnt_list = self.driverJoints
-        if self.orientToWorld or self.orientBase:
+        if self.orientToWorld:
             self.orient_joint(joint, jnt_list[1])
+        if self.orientBase:
+            self.orient_joint(joint, jnt_list[1], local=True)
         else:
             self.orient_joint(joint, jnt_list[1], jnt_list[2])
 
@@ -163,14 +185,10 @@ class Build(object):
         if pm.listRelatives(joint, p=1):
             pm.parent(joint, w=1)
         # Orient tip to World or local
-        if self.orientTip:
-            pm.parent(joint, prev_jnt)
-            for axis in constants.AXES:
-                pm.setAttr("{}.jointOrient{}".format(str(joint), axis), 0)
-        else:
+        if not self.orientTip:
             pm.xform(joint, ws=1, ro=(0, 0, 0))
             pm.makeIdentity(joint, a=1)
-            pm.parent(joint, prev_jnt)
+        pm.parent(joint, prev_jnt)
 
     def orient_joints_in_chain(self, joints=None):
         if joints is None:
@@ -191,4 +209,7 @@ class Build(object):
             # Set orientation for all joints in between
             else:
                 self.orient_mid_joints(jnt, i, jnt_list=joints)
+        if self.orientTip:
+            utils.reset_transforms(joints[-1], t=False, r=False, s=False, m=False, o=True)
+        pm.xform(self.driverJointsGrp, t=pm.xform(joints[0], q=1, ws=1, rp=1))
         pm.parent(joints[0], self.driverJointsGrp)

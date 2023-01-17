@@ -1,6 +1,7 @@
 AXES = ["X", "Y", "Z"]
 TRNSFRMATTRS = ["translate", "rotate", "scale"]
 FROZENMTRX = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+ROTATEORDER = ["xyz", "yzx", "zxy", "xzy", "yxz", "zyx"]
 
 
 def get_axis_index(axis):

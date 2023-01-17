@@ -162,7 +162,19 @@ def get_joint_type(joint):
     return jointType
 
 
-def make_curve_from_chain(joint, name=None):
+def get_span(i, jnt_chain):
+    if i == 0:
+        span = "upper"
+    elif i == len(jnt_chain[:-1]) - 1:
+        span = "lower"
+    elif i == 1 and i + 1 == len(jnt_chain[:-1]) - 1:
+        span = "mid"
+    else:
+        span = f"mid{str(i + 1).zfill(2)}_"
+    return span
+
+
+def make_curve_from_chain(joint, name=None, cubic=True, bind=None):
     # Name the curve
     if name is None:
         name = f"{get_info_from_joint(joint, name=True)}_crv"
@@ -174,7 +186,7 @@ def make_curve_from_chain(joint, name=None):
     pts = [pm.xform(jnt, q=1, ws=1, rp=1) for jnt in jnts]
     # Build the curve
     deg = 3
-    if not len(jnts) > 4:
+    if not len(jnts) > 4 or not cubic:
         deg = 1
     crv = pm.curve(n=name, d=deg, p=pts)
     # Set the pivot point to the curve's base
@@ -184,19 +196,20 @@ def make_curve_from_chain(joint, name=None):
     # Group the curve
     grp = make_group(f"{name}_grp", child=crv, parent=make_group("crv_grp", parent=make_group("utils_grp")))
     pm.xform(grp, t=pm.xform(joint, q=1, ws=1, rp=1))
-    pm.skinCluster(jnts, crv, n=f"{crv.name()}_skinCluster", tsb=True, bm=0, sm=0, nw=1)
+    if bind is None:
+        bind = jnts
+    pm.skinCluster(bind, crv, n=f"{crv.name()}_skinCluster", tsb=True, bm=0, sm=0, nw=1)
     # Create a curve info node
     info = check_shading_node(f"{name}_info", "curveInfo")
     pm.connectAttr(crv.worldSpace[0], info.inputCurve)
     return crv
 
 
-def duplicate_chain(jnt_chain, chain_type, dup_parent):
+def duplicate_chain(jnts, chain_type, dup_parent):
     dupJnts = []
-    for jnt in jnt_chain:
+    for jnt in jnts:
         parent = get_parent_and_children(jnt)[0]
         children = get_parent_and_children(jnt)[1]
-        print(jnt, parent, children)
         # Unparent the joint and any children it may have
         if parent is not None:
             pm.parent(jnt, w=1)
@@ -210,6 +223,8 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
             dupRad = jnt.radius.get() * 0.65
         elif chain_type == "IK":
             dupRad = jnt.radius.get() * 1.6
+        elif chain_type == "twst":
+            dupRad = jnt.radius.get() * 2.0
         else:
             dupRad = jnt.radius.get() * 0.4
         dup.radius.set(dupRad)
@@ -224,6 +239,45 @@ def duplicate_chain(jnt_chain, chain_type, dup_parent):
             pm.parent(dup, dup_parent)
         dupJnts.append(dup)
     return dupJnts
+
+
+def split_chain(jnt_chain, jnt_type="split", splits=1):
+    # Make sure splits make sense mathematically
+    if splits == 0:
+        splits = 1
+    if splits < 0:
+        splits = -1 * splits
+    # Create a group to parent the splits to
+    grp = make_group(f"{get_info_from_joint(jnt_chain[0], name=True)}_{jnt_type}_jnt_grp",
+                     parent=make_group(f"{jnt_type}_jnt_grp", parent=make_group("jnt_grp")))
+    allSpltJnts = []
+    # Create splits for each joint span
+    for i, jnt in enumerate(jnt_chain[:-1]):
+        span = get_span(i, jnt_chain)
+        spltJnts = []
+        dupJnts = duplicate_chain([jnt, pm.listRelatives(jnt, c=1)[0]], jnt_type, grp)
+        pm.rename(dupJnts[0], dupJnts[0].name().replace(dupJnts[0].name().split("_")[-3], f"{span}01"))
+        pm.rename(dupJnts[-1], dupJnts[-1].name().replace(
+            dupJnts[-1].name().split("_")[-3], f"{span}{str(splits+2).zfill(2)}"))
+        spltJnts.append(dupJnts[0])
+        # Create the split joints
+        for n in range(splits):
+            spltJnt = pm.duplicate(dupJnts[-1], n=dupJnts[-1].name().replace(
+                dupJnts[-1].name().split("_")[-3], f"{span}{str(n+2).zfill(2)}"))[0]
+            aimAxis = str(spltJnt.getRotationOrder())[0]
+            eval(f"spltJnt.translate{aimAxis}.set((spltJnt.translate{aimAxis}.get() / (splits + 1)) * (n + 1))")
+            spltJnts.append(spltJnt)
+        spltJnts.append(dupJnts[-1])
+        # set attributes for split joints
+        for n, j in enumerate(spltJnts):
+            j.overrideEnabled.set(1)
+            j.overrideColor.set(9)
+            if n == 0 and i > 0:
+                pm.parent(j, allSpltJnts[-1])
+            if n > 1:
+                pm.parent(j, spltJnts[n - 1])
+            allSpltJnts.append(j)
+    return allSpltJnts
 
 
 #############

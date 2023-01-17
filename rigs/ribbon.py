@@ -8,6 +8,7 @@ INVERT = ["leg"]
 UNLOCKTIP = ["tail"]
 
 
+# TODO: Setup micro controls for ribbon
 class Ribbon(object):
     def __init__(self, name, spans, width, scale=10, orient="Z", normal="X", aim_axis="X", up_axis="Y",
                  mirror=False, invert=False, sine=True, twist=True, skin_jnts=True, matrix=True, lock_tip=True):
