@@ -385,7 +385,7 @@ def reset_transforms(nodes=None, t=True, r=True, s=True, m=True, o=True):
         return None
     attrs = ["translate", "rotate", "scale", "jointOrient", "offsetParentMatrix"]
     for node in nodes:
-        tansforms = [t, r, s, [x for x in [o] if node.type == "joint"], m]
+        tansforms = [t, r, s, [x for x in [o] if node.type() == "joint"][0], m]
         for attr in [attr for attr in attrs if tansforms[attrs.index(attr)]]:
             for axis in constants.AXES:
                 val = 0

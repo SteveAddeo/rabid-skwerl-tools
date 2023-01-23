@@ -43,7 +43,7 @@ def get_constrain_attrs(const_type):
 def get_span(i, chain_len, base_tip=0):
     if i == 0:
         span = ["upper", "base"]
-    elif i == chain_len + 1:
+    elif i == chain_len - 1:
         span = ["lower", "tip"]
     elif i == 1 and chain_len == 3:
         span = ["mid", "mid"]

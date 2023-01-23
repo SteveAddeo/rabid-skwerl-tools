@@ -99,6 +99,8 @@ class Build(object):
         self.ik = ik
         self.fkJointsGrp = utils.make_group(f"{self.name}_FK_jnt_grp", parent=utils.make_group("FK_jnt_grp"))
         self.ikJointsGrp = utils.make_group(f"{self.name}_IK_jnt_grp", parent=utils.make_group("IK_jnt_grp"))
+        pm.xform(self.fkJointsGrp, t=pm.xform(self.driverJoints[0], q=1, ws=1, rp=1))
+        pm.xform(self.ikJointsGrp, t=pm.xform(self.driverJoints[0], q=1, ws=1, rp=1))
         if self.driver is not None:
             if not pm.listRelatives("FK_jnt_grp", p=1):
                 pm.parent("FK_jnt_grp", self.driver.mainJointsGrp)
@@ -109,15 +111,9 @@ class Build(object):
         if bc:
             self.blendColors = self.get_blend_colors()
         else:
-            srcJnts = self.ikJoints
-            tgtJnts = self.fkJoints
-            if not primary == "IK":
-                srcJnts = self.fkJoints
-                tgtJnts = self.ikJoints
-            for i, jnt in enumerate(srcJnts):
-                # TODO: this constraint still doesn't successfully reset joints
-                matrix.matrix_constraint(jnt, tgtJnts[i])
-                matrix.matrix_constraint(tgtJnts[i], self.driverJoints[i])
+            self.primary = primary
+            self.make_matrix_constraints()
+
         # TODO: setup IK system
         # TODO: determine when to use a spline
         # TODO: setup stretch
@@ -167,6 +163,21 @@ class Build(object):
             jnt.overrideEnabled.set(1)
             jnt.overrideColor.set(color)
         return newChain
+
+    def make_matrix_constraints(self):
+        for grp in [self.fkJointsGrp, self.ikJointsGrp] + pm.listRelatives(self.driverJoints[0], p=1):
+            child = pm.listRelatives(grp, c=1)[0]
+            pm.parent(child, pm.listRelatives(grp, p=1)[0])
+            pm.makeIdentity(grp, a=1)
+            pm.parent(child, grp)
+        srcJnts = self.ikJoints
+        tgtJnts = self.fkJoints
+        if not self.primary == "IK":
+            srcJnts = self.fkJoints
+            tgtJnts = self.ikJoints
+        for i, jnt in enumerate(srcJnts):
+            matrix.matrix_constraint(jnt, tgtJnts[i], maintain_rotation=False)
+            matrix.matrix_constraint(tgtJnts[i], self.driverJoints[i], maintain_rotation=False)
 
 
 
