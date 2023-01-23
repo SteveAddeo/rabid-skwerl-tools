@@ -18,11 +18,27 @@ def get_guides_from_group(group):
     return guides
 
 
-def make_object_from_group(group):
-    name = group.name.replace("_guides_grp", "")
-    chainLength = len(get_guides_from_group(group))
-    obj = Build(name, chain_len=chainLength)
-    return obj
+def make_guides_objects():
+    """
+    Creates a list of Guides Objects from an imported Guides Group that can be used to build a rig
+    :return: list: Guides Objects created from group
+    """
+    if not pm.ls("guides_grp"):
+        pm.warning("guides group is not in Maya scene")
+    guidesObjList = []
+    for group in pm.listRelatives("guides_grp", c=1):
+        name = group.name().replace("_guides_grp", "")
+        side = name[:2]
+        chainLength = len(get_guides_from_group(group))
+        mirror = False
+        if side in ["RT", "BK", "BT"]:
+            mirror = True
+        invert = False
+        if name.split("_")[1] in ["leg"]:
+            invert = True
+        guidesObj = Build(name, side=side, chain_len=chainLength, mirror=mirror, invert=invert)
+        guidesObjList.append(guidesObj)
+    return guidesObjList
 
 
 class Build(object):
@@ -42,6 +58,7 @@ class Build(object):
         self.curve = self.make_guides_curve()
         if link:
             self.linkGuides = self.link_guides()
+        pm.select(cl=1)
 
     def get_guides(self):
         if pm.listRelatives(self.guidesGrp, c=1):
@@ -52,15 +69,6 @@ class Build(object):
         else:
             guides = self.make_guides()
         return guides
-
-    def get_guide_name(self, i):
-        if i == 0:
-            guideName = f"{self.name}_base_guide"
-        elif i == self.chainLength - 1:
-            guideName = f"{self.name}_tip_guide"
-        else:
-            guideName = f"{self.name}_mid{str(i).zfill(2)}_guide"
-        return guideName
 
     def link_guides(self):
         linkGuides = []
@@ -89,7 +97,8 @@ class Build(object):
         if self.invert and not self.mirror:
             scale = -scale
         for i in range(self.chainLength):
-            guideName = self.get_guide_name(i)
+            span = constants.get_span(i, self.chainLength, base_tip=1)
+            guideName = f"{self.name}_{span}_guide"
             # Create and position the locator
             guide = pm.spaceLocator(n=guideName)
             guidesList.append(guide)

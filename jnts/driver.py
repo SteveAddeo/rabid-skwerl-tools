@@ -1,7 +1,9 @@
 import pymel.core as pm
 import maya.api.OpenMaya as om
+
 from core import constants
 from core import utils
+from jnts import orient
 from jnts import twist
 
 
@@ -19,18 +21,21 @@ class Build(object):
         self.rigGrp = utils.make_group("rig_grp_DO_NOT_TOUCH")
         self.mainJointsGrp = utils.make_group("jnt_grp", parent=self.rigGrp)
         self.mainUtilsGrp = utils.make_group("utils_grp", parent=self.rigGrp)
-        self.driverJointsGrp = utils.make_group(f"{self.name}_drv_jnt_grp", parent=self.mainJointsGrp)
+        self.driverJointsGrp = utils.make_group(f"{self.name}_drv_jnt_grp",
+                                                parent=utils.make_group("drv_jnt_grp", parent=self.mainJointsGrp))
         self.aimVector = self.get_vector_from_axis(self.orientation[0].capitalize())
         self.upVector = self.get_vector_from_axis(self.orientation[1].capitalize())
         self.tertiaryVector = self.get_vector_from_axis(self.orientation[2].capitalize())
         self.driverJoints = self.make_driver_chain()
         self.upLoc = self.make_up_loc()
-        self.crv = utils.make_curve_from_chain(self.driverJoints[0])
+        self.crvName = f"{utils.get_info_from_joint(self.driverJoints[0], name=True)}_crv"
+        self.crv = utils.make_curve_from_chain(self.driverJoints[0], name=self.crvName, bind=self.driverJoints)
         self.crvInfo = pm.PyNode(f"{self.crv.name()}_info")
         self.longAxis = self.get_long_axis()
         self.check_rotation(self.driverJoints)
         if make_twist:
-            self.twistObj = twist.Build(self.driverJoints[0], self.upVector)
+            self.twistObj = twist.Build(self.driverJoints[0])
+        pm.select(cl=1)
 
     def check_rotation(self, joints=None, long_axis=None):
         if joints is None:
@@ -127,7 +132,8 @@ class Build(object):
             jntList.append(jnt)
         # Set proper rotation and orientation for the guides
         longAxis = self.get_long_axis(jntList[0])
-        self.orient_joints_in_chain(jntList)
+        orient.joints_in_chain(jntList, orient_tip=self.orientTip, group=self.driverJointsGrp,
+                               base_to_world=self.orientBase, chain_to_world=self.orientToWorld)
         self.check_rotation(jntList, longAxis)
         return jntList
 
@@ -140,76 +146,3 @@ class Build(object):
         pm.delete(pt, ornt)
         pm.move(loc, [-v * (self.guides.scale * .2) for v in self.tertiaryVector], r=1, os=1)
         return loc
-
-    def orient_joint(self, joint, aim_obj, up_obj=None, local=False, neg=False):
-        up = self.upVector
-        if local:
-            up = [v * -1 for v in self.tertiaryVector]
-        if neg:
-            up = [v * -1 for v in up]
-        if up_obj is None:
-            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimVector, u=up, wut="vector")
-        else:
-            aimConst = pm.aimConstraint([aim_obj], joint, aim=self.aimVector, u=up, wut="object", wuo=up_obj)
-        pm.delete(aimConst)
-        pm.makeIdentity(joint, a=1)
-
-    def orient_base_joint(self, joint=None, jnt_list=None):
-        if joint is None:
-            joint = self.driverJoints[0]
-        if jnt_list is None:
-            jnt_list = self.driverJoints
-        if self.orientToWorld:
-            self.orient_joint(joint, jnt_list[1])
-        if self.orientBase:
-            self.orient_joint(joint, jnt_list[1], local=True)
-        else:
-            self.orient_joint(joint, jnt_list[1], jnt_list[2])
-
-    def orient_mid_joints(self, joint, i, jnt_list=None):
-        if jnt_list is None:
-            jnt_list = self.driverJoints
-        # Center Chains align to World Up
-        if self.orientToWorld:
-            self.orient_joint(joint, jnt_list[i + 1])
-        else:
-            self.orient_joint(joint, jnt_list[i + 1], jnt_list[i - 1])
-        pm.parent(joint, jnt_list[i - 1])
-
-    def orient_tip_joint(self, joint, prev_jnt=None):
-        if pm.listRelatives(joint, c=1):
-            pm.warning("{} is not a tip joint because it has a child")
-            return
-        if prev_jnt is None:
-            prev_jnt = self.driverJoints[-2]
-        if pm.listRelatives(joint, p=1):
-            pm.parent(joint, w=1)
-        # Orient tip to World or local
-        if not self.orientTip:
-            pm.xform(joint, ws=1, ro=(0, 0, 0))
-            pm.makeIdentity(joint, a=1)
-        pm.parent(joint, prev_jnt)
-
-    def orient_joints_in_chain(self, joints=None):
-        if joints is None:
-            joints = self.driverJoints
-        # Unparent all joints before orienting
-        for jnt in joints:
-            if pm.listRelatives(jnt, p=1):
-                pm.parent(jnt, w=1)
-                self.check_rotation_order(jnt)
-        # Orient Joints
-        for i, jnt in enumerate(joints):
-            # Set orientation for the Base Joint
-            if i == 0:
-                self.orient_base_joint(jnt, jnt_list=joints)
-            # Set orientation for the Tip Joint
-            elif i == len(joints) - 1:
-                self.orient_tip_joint(jnt, joints[i - 1])
-            # Set orientation for all joints in between
-            else:
-                self.orient_mid_joints(jnt, i, jnt_list=joints)
-        if self.orientTip:
-            utils.reset_transforms(joints[-1], t=False, r=False, s=False, m=False, o=True)
-        pm.xform(self.driverJointsGrp, t=pm.xform(joints[0], q=1, ws=1, rp=1))
-        pm.parent(joints[0], self.driverJointsGrp)

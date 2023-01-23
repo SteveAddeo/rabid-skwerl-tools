@@ -206,7 +206,7 @@ class Ribbon(object):
             jnt = pm.joint(rad=(0.1 * self.scale), n=jntName)
             jnt.overrideEnabled.set(1)
             jnt.overrideColor.set(9)
-            utils.reset_transforms(jnt)
+            utils.reset_transforms([jnt])
             # Pin joint to ribbon
             if self.matrix:
                 self.matrix_pin(jnt, i)

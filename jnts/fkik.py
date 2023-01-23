@@ -6,6 +6,8 @@ from core import utils
 from rigs import stretch
 
 
+# TODO: currently, the base joint is receiving transform values when the offset should be maintained
+
 def make_fkik_chains(jnts=None, bc=True, primary="IK"):
     # get list of joints if none are provided
     if jnts is None:

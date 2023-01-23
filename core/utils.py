@@ -2,7 +2,7 @@ import os
 import json
 import pymel.core as pm
 from core import constants
-from core import matrix
+import maya.api.OpenMaya as om
 
 
 ENVPATH = os.environ["MAYA_APP_DIR"]
@@ -31,7 +31,32 @@ def set_sine_lock_end(hndl):
 # Nodes
 #############
 
+def check_nodes(nodes=None):
+    """
+    Checks to see if a list of nodes is given and, if not, assign selected nodes. If the
+    given variable is a string, the function will return PyNodes in their place
+    :param nodes: List: nodes being checked
+    :return: List: nodes being checked and seleced nodes if None
+    :raises: Error if nothing selected
+    """
+    if nodes is None:
+        if not pm.ls(sl=0):
+            pm.warning("Nothing selected.")
+            return None
+        nodes = pm.ls(sl=1)
+    for i, node in enumerate(nodes):
+        if type(node) == "string":
+            nodes[i] = pm.PyNode(node)
+    return nodes
+
+
 def check_shading_node(name, node_type):
+    """
+    Checks to see if a shading node exists and creates one if it doesn't
+    :param name: str: the name of the node being checked
+    :param node_type: str: the type of shader node being checked (ex: multiplyDoubleLinear)
+    :return: PyNode: the shading node being checked
+    """
     print(f"name is {name}")
     if pm.ls(name):
         return pm.PyNode(name)
@@ -67,34 +92,33 @@ def make_group(name, child=None, parent=None):
     return grp
 
 
-def make_offset_groups(nodes=None):
+def make_offset_groups(nodes=None, name=None, freeze=True, reset=True):
     offsetGrps = []
+    nodes = check_nodes(nodes)
     if nodes is None:
-        nodes = pm.ls(sl=1)
-    if not nodes:
-        pm.warning("Nothing Selected")
         return None
     for node in nodes:
-        if pm.nodeType(node) == "nurbsCurve":
+        if node.type() == "nurbsCurve":
             continue
-        parent = pm.listRelatives(node, p=1)
-        grp = pm.group(em=1, n=f"{str(node)}_grp")
-        pm.parent(grp, node)
-        reset_transforms(grp)
-        if parent:
-            pm.parent(grp, parent[0])
-        else:
-            pm.parent(grp, w=1)
+        if name is None:
+            name = f"{node.name()}_grp"
+        grp = make_group(name)
+        pm.xform(grp, t=pm.xform(node, q=1, ws=1, rp=1))
+        if pm.listRelatives(node, p=1):
+            pm.parent(grp, pm.listRelatives(node, p=1)[0])
+        if freeze:
+            transfer_transforms_to_offset([grp])
         pm.parent(node, grp)
+        if reset:
+            reset_transforms([node])
         offsetGrps.append(grp)
     return offsetGrps
 
 
 def parent_crv(name=None, nodes=None):
+    nodes = check_nodes(nodes)
     if nodes is None:
-        nodes = pm.ls(sl=1)
-    if not nodes:
-        pm.error("Nothing Selected")
+        return None
     # Get the name of the curve
     if name is None:
         name = str(nodes[-1])
@@ -162,22 +186,18 @@ def get_joint_type(joint):
     return jointType
 
 
-def get_span(i, jnt_chain):
-    if i == 0:
-        span = "upper"
-    elif i == len(jnt_chain[:-1]) - 1:
-        span = "lower"
-    elif i == 1 and i + 1 == len(jnt_chain[:-1]) - 1:
-        span = "mid"
-    else:
-        span = f"mid{str(i + 1).zfill(2)}_"
-    return span
-
-
 def make_curve_from_chain(joint, name=None, cubic=True, bind=None):
+    """
+    Makes a curve with control points at the location of each joint in a given chain
+    :param joint: PyNode: The base joint of the chain the curve is being made out of
+    :param name: str: The name of the curve being created
+    :param cubic: bool: whether we want the curve degree to be Cubic or Linear
+    :param bind: list: list of joints to bind the curve to
+    :return: PyNode: the curve that was created
+    """
     # Name the curve
     if name is None:
-        name = f"{get_info_from_joint(joint, name=True)}_crv"
+        name = joint.name().replace("_jnt", "_crv")
     # Check if curve exists
     if pm.ls(name):
         return pm.PyNode(name)
@@ -196,9 +216,8 @@ def make_curve_from_chain(joint, name=None, cubic=True, bind=None):
     # Group the curve
     grp = make_group(f"{name}_grp", child=crv, parent=make_group("crv_grp", parent=make_group("utils_grp")))
     pm.xform(grp, t=pm.xform(joint, q=1, ws=1, rp=1))
-    if bind is None:
-        bind = jnts
-    pm.skinCluster(bind, crv, n=f"{crv.name()}_skinCluster", tsb=True, bm=0, sm=0, nw=1)
+    if bind is not None:
+        skin_to_joints(bind, crv)
     # Create a curve info node
     info = check_shading_node(f"{name}_info", "curveInfo")
     pm.connectAttr(crv.worldSpace[0], info.inputCurve)
@@ -206,6 +225,13 @@ def make_curve_from_chain(joint, name=None, cubic=True, bind=None):
 
 
 def duplicate_chain(jnts, chain_type, dup_parent):
+    """
+    Creates a duplicate of a given joint chain with transforms preserved and parented to a new group
+    :param jnts: list: joints being duplicated
+    :param chain_type: str: the name of the type of chain that will replace the original joint type (typically 'drv')
+    :param dup_parent: The group to parent duplicate chain to
+    :return: list: The duplicated joints that were created
+    """
     dupJnts = []
     for jnt in jnts:
         parent = get_parent_and_children(jnt)[0]
@@ -241,7 +267,28 @@ def duplicate_chain(jnts, chain_type, dup_parent):
     return dupJnts
 
 
+def skin_to_joints(bind_jnts, obj, name=None):
+    """
+    Apply a skincluster to a given object with given joints
+    :param bind_jnts: list: joints being skinned to
+    :param obj: pyMel: object being skinned
+    :param name: str: name of skin cluster
+    :return: pyMel: the skincluster that was created
+    """
+    if name is None:
+        name = f"{obj.name()}_skinCluster"
+    clstr = pm.skinCluster(bind_jnts, obj, n=name, tsb=True, bm=0, sm=0, nw=1)
+    return clstr
+
+
 def split_chain(jnt_chain, jnt_type="split", splits=1):
+    """
+    Takes a given joint chain and creates a new chain with each span composed of a given number of split joints
+    :param jnt_chain: list: The base chain creating the split chain (Typically a driver joint)
+    :param jnt_type: str: The name of the joints being created (can also be 'skn')
+    :param splits: int: Number of in between joints for each span
+    :return: list: All split joints that were created
+    """
     # Make sure splits make sense mathematically
     if splits == 0:
         splits = 1
@@ -253,29 +300,23 @@ def split_chain(jnt_chain, jnt_type="split", splits=1):
     allSpltJnts = []
     # Create splits for each joint span
     for i, jnt in enumerate(jnt_chain[:-1]):
-        span = get_span(i, jnt_chain)
-        spltJnts = []
-        dupJnts = duplicate_chain([jnt, pm.listRelatives(jnt, c=1)[0]], jnt_type, grp)
-        pm.rename(dupJnts[0], dupJnts[0].name().replace(dupJnts[0].name().split("_")[-3], f"{span}01"))
-        pm.rename(dupJnts[-1], dupJnts[-1].name().replace(
-            dupJnts[-1].name().split("_")[-3], f"{span}{str(splits+2).zfill(2)}"))
-        spltJnts.append(dupJnts[0])
+        # Create the base of the split chain
+        span = constants.get_span(i, len(jnt_chain))
+        dupJnt = duplicate_chain([jnt], jnt_type, grp)[0]
+        pm.rename(dupJnt, dupJnt.name().replace(dupJnt.name().split("_")[-3], f"{span}01"))
+        spltJnts = [dupJnt]
         # Create the split joints
-        for n in range(splits):
-            spltJnt = pm.duplicate(dupJnts[-1], n=dupJnts[-1].name().replace(
-                dupJnts[-1].name().split("_")[-3], f"{span}{str(n+2).zfill(2)}"))[0]
+        for n in range(splits + 1):
+            spltJnt = pm.duplicate(spltJnts[-1], n=spltJnts[-1].name().replace(
+                spltJnts[-1].name().split("_")[-3], f"{span}{str(n+2).zfill(2)}"))[0]
+            pm.parent(spltJnt, spltJnts[-1])
             aimAxis = str(spltJnt.getRotationOrder())[0]
-            eval(f"spltJnt.translate{aimAxis}.set((spltJnt.translate{aimAxis}.get() / (splits + 1)) * (n + 1))")
+            eval(f"spltJnt.translate{aimAxis}.set((jnt_chain[i+1].translate{aimAxis}.get() / (splits + 1)))")
             spltJnts.append(spltJnt)
-        spltJnts.append(dupJnts[-1])
         # set attributes for split joints
         for n, j in enumerate(spltJnts):
             j.overrideEnabled.set(1)
             j.overrideColor.set(9)
-            if n == 0 and i > 0:
-                pm.parent(j, allSpltJnts[-1])
-            if n > 1:
-                pm.parent(j, spltJnts[n - 1])
             allSpltJnts.append(j)
     return allSpltJnts
 
@@ -285,12 +326,22 @@ def split_chain(jnt_chain, jnt_type="split", splits=1):
 #############
 
 def get_data_from_json(file_path):
+    """
+    Retrieves data from a given json file
+    :param file_path: str: the directory path to the json file being read from
+    :return: the data retrieved
+    """
     with open(file_path) as file:
         data = json.load(file)
     return data
 
 
 def write_data_to_json(file_path, data):
+    """
+    Writes given data to a specified json file
+    :param file_path: str: the directory path to the json file being written to
+    :param data: data being written to the json file
+    """
     with open(file_path, "w") as file:
         json.dump(data, file, indent=2)
 
@@ -300,8 +351,14 @@ def write_data_to_json(file_path, data):
 #############
 
 def freeze_transforms(nodes=None):
+    """
+    Freezes the transforms of a given list of nodes
+    :param nodes: list: the list of PyNodes whose transforms are being frozen
+    :return: list: the same list of PyNodes
+    """
+    nodes = check_nodes(nodes)
     if nodes is None:
-        nodes = pm.ls(sl=1)
+        return None
     for node in nodes:
         if not pm.nodeType(node) == "transform":
             if pm.listRelatives(node, p=1) and not pm.nodeType(pm.listRelatives(node, p=1)[0]) == "transform":
@@ -313,36 +370,80 @@ def freeze_transforms(nodes=None):
     return nodes
 
 
-def reset_transforms(node, t=True, r=True, s=True, m=True, o=True):
-    for axis in constants.AXES:
-        if t:
-            try:
-                pm.setAttr(f"{node.name()}.translate{axis}", 0)
-            except RuntimeError as e:
-                print(e)
-        if r:
-            try:
-                pm.setAttr(f"{node.name()}.rotate{axis}", 0)
-            except RuntimeError as e:
-                print(e)
-        if s:
-            try:
-                pm.setAttr(f"{node.name()}.scale{axis}", 1)
-            except RuntimeError as e:
-                print(e)
-        if m:
-            try:
-                node.offsetParentMatrix.set(constants.FROZENMTRX)
-            except RuntimeError as e:
-                print(e)
-        if o and node.type() == "joint":
-            try:
-                pm.setAttr(f"{node.name()}.jointOrient{axis}", 0)
-            except RuntimeError as e:
-                print(e)
+def reset_transforms(nodes=None, t=True, r=True, s=True, m=True, o=True):
+    """
+    Resets the transformation values of a given node without preserving transforms
+    :param nodes: list: List of PyNodes being edited
+    :param t: bool: Reset Translate attribute values
+    :param r: bool: Reset Rotate attribute values
+    :param s: bool: Reset Scale attribute values
+    :param m: bool: Reset Ofset Parent Matrix attribute values
+    :param o: bool: Reset Joint Offset attribute values (checks to see if node is a joint)
+    """
+    nodes = check_nodes(nodes)
+    if nodes is None:
+        return None
+    attrs = ["translate", "rotate", "scale", "jointOrient", "offsetParentMatrix"]
+    for node in nodes:
+        tansforms = [t, r, s, [x for x in [o] if node.type == "joint"], m]
+        for attr in [attr for attr in attrs if tansforms[attrs.index(attr)]]:
+            for axis in constants.AXES:
+                val = 0
+                if attr == "scale":
+                    val = 1
+                try:
+                    if attr == "offsetParentMatrix":
+                        node.offsetParentMatrix.set(constants.FROZENMTRX)
+                        break
+                    else:
+                        eval(f"node.{attr}{axis}.set(val)")
+                except RuntimeError as e:
+                    print(e)
 
 
-def toggle_inherits_transform(nodes):
+def transfer_transforms_to_offset(nodes=None):
+    """
+    Moves all transform values from the transform attributs to the Offset Parent Matrix attribute
+    :param nodes: list: a list of the PyNodes being edited
+    """
+    nodes = check_nodes(nodes)
+    if nodes is None:
+        return None
+    for node in nodes:
+        localMtrx = om.MMatrix(pm.xform(node, q=1, m=1, ws=0))
+        offsetMtrx = om.MMatrix(node.offsetParentMatrix.get())
+        bakedMtrx = localMtrx * offsetMtrx
+        node.offsetParentMatrix.set(bakedMtrx)
+        reset_transforms([node], m=False)
+
+
+def transfer_offset_to_orient(nodes=None):
+    """
+    Moves any rotation value in the Offset Parent Matrix over to the Joint Orient attribude
+    :param nodes: list: a list of the PyNodes being edited
+    """
+    nodes = check_nodes(nodes)
+    if nodes is None:
+        return
+    for node in nodes:
+        if not node.type() == "joint":
+            continue
+        decompose = pm.createNode("decomposeMatrix", n="tempDM")
+        source = pm.listConnections(node.offsetParentMatrix, d=0)[0]
+        pm.connectAttr(source.matrixSum, decompose.inputMatrix)
+        decompose.inputRotateOrder.set(node.rotateOrder.get())
+        node.jointOrient.set([-v for v in decompose.outputRotate.get()])
+        pm.delete(decompose)
+
+
+def toggle_inherits_transform(nodes=None):
+    """
+    Turns the Inherits Transform attribute of a given node off and on
+    :param nodes: list: a list of the PyNodes being edited
+    """
+    nodes = check_nodes(nodes)
+    if nodes is None:
+        return
     for node in nodes:
         if node.inheritsTransform.get():
             node.inheritsTransform.set(1)

@@ -40,6 +40,25 @@ def get_constrain_attrs(const_type):
     return attrs
 
 
+def get_span(i, chain_len, base_tip=0):
+    if i == 0:
+        span = ["upper", "base"]
+    elif i == chain_len + 1:
+        span = ["lower", "tip"]
+    elif i == 1 and chain_len == 3:
+        span = ["mid", "mid"]
+    else:
+        span = [f"mid{str(i + 1).zfill(2)}_", f"mid{str(i + 1).zfill(2)}_"]
+    return span[base_tip]
+
+
+def get_vector_from_axis(axis="X", mirror=False):
+    vector = get_axis_vector(axis)
+    if mirror:
+        vector = [-v for v in vector]
+    return vector
+
+
 def is_positive(n):
     if not n > 0:
         return False

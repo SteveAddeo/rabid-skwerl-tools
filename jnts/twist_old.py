@@ -32,7 +32,7 @@ def make_base_tip_joints(joint, jnt_type, parent=None):
     pm.rename(baseJnt, baseName)
     pm.rename(tipJnt, tipName)
     # Zero out tip joint orientation:
-    utils.reset_transforms(tipJnt, t=False, s=False)
+    utils.reset_transforms([tipJnt], t=False, s=False)
     for axis in constants.AXES:
         pm.setAttr("{}.jointOrient{}".format(str(tipJnt), axis), 0.0)
 
@@ -195,7 +195,7 @@ class Build:
             pm.makeIdentity(loc, a=1)
             offsetGrp = utils.make_offset_groups([loc])[0]
             pm.parent(offsetGrp, jnt)
-            utils.reset_transforms(offsetGrp)
+            utils.reset_transforms([offsetGrp])
             pm.parent(offsetGrp, self.followJoints[prime_jnt][0])
             if "_mid_jnt" in str(jnt):
                 self.set_mid_up(jnt, loc)

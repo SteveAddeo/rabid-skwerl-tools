@@ -14,6 +14,7 @@ class Build(object):
         pm.xform(self.followJointGrp, t=pm.xform(self.driverObj.driverJoints[0], q=1, ws=1, rp=1))
         pm.xform(self.followHndlGrp, t=pm.xform(self.driverObj.driverJoints[0], q=1, ws=1, rp=1))
         self.followJoints = self.make_follow_jnts()
+        pm.select(cl=1)
 
     def make_follow_jnts(self):
         """
@@ -32,7 +33,7 @@ class Build(object):
         pm.makeIdentity(flwJnts[0], a=1)
         # Parent and orient tip joint
         pm.parent(flwJnts[-1], flwJnts[0])
-        utils.reset_transforms(flwJnts[-1], t=False)
+        utils.reset_transforms([flwJnts[-1]], t=False)
         # Create IK setup
         hndl = ik.make_handle(flwJnts[0], flwJnts[-1], f"{self.driverObj.name}_flw_hndl", "singleChain")[0]
         pm.parent(hndl, self.followHndlGrp)
