@@ -27,19 +27,19 @@ class Build(object):
     def __init__(self, stretch_jnts, curve, skin_jnts=None, vol=True):
         self.name = "_".join(stretch_jnts[0].split("_")[:-1])
         self.stretchJoints = stretch_jnts
-        self.curveInfo = utils.check_shading_node(f"{curve.name()}_info", "curveInfo")
+        self.curveInfo = utils.check_hypergraph_node(f"{curve.name()}_info", "curveInfo")
         self.skinJoints = skin_jnts
         self.vol = vol
         self.roo = str(self.stretchJoints[0].getRotationOrder())
         print(self.roo)
         # self.ikCtl = ctls_obj.ikMain
         # Create Stretch Nodes
-        self.stretchVal = utils.check_shading_node(f"{self.name}_stretch_val", "multiplyDivide")
-        self.squashVal = utils.check_shading_node(f"{self.name}_squash_val", "multiplyDivide")
-        self.localMult = utils.check_shading_node(f"local_scale_mult", "multDoubleLinear")
-        self.scaleMult = utils.check_shading_node(f"{self.name}_scale_mult", "multDoubleLinear")
-        self.squashDiv = utils.check_shading_node(f"{self.name}_squash_div", "multiplyDivide")
-        self.stretchMult = utils.check_shading_node(f"{self.name}_stretch_scale_mult", "multDoubleLinear")
+        self.stretchVal = utils.check_hypergraph_node(f"{self.name}_stretch_val", "multiplyDivide")
+        self.squashVal = utils.check_hypergraph_node(f"{self.name}_squash_val", "multiplyDivide")
+        self.localMult = utils.check_hypergraph_node(f"local_scale_mult", "multDoubleLinear")
+        self.scaleMult = utils.check_hypergraph_node(f"{self.name}_scale_mult", "multDoubleLinear")
+        self.squashDiv = utils.check_hypergraph_node(f"{self.name}_squash_div", "multiplyDivide")
+        self.stretchMult = utils.check_hypergraph_node(f"{self.name}_stretch_scale_mult", "multDoubleLinear")
         self.arcLength = self.curveInfo.arcLength.get()
         self.ikStretchSwitch = None
         # Set Attribute Values
@@ -66,10 +66,10 @@ class Build(object):
 
     def make_ik_stretch(self):
         # Create IK stretch
-        localMult = utils.check_shading_node(f"local_scale_mult", "multDoubleLinear")
-        ikScaleMult = utils.check_shading_node(f"{self.name}_IK_scale_mult", "multDoubleLinear")
-        ikStretchVal = utils.check_shading_node(f"{self.name}_IK_stretch_val", "multiplyDivide")
-        cond = utils.check_shading_node(f"{self.name}_IK_str_cond", "condition")
+        localMult = utils.check_hypergraph_node(f"local_scale_mult", "multDoubleLinear")
+        ikScaleMult = utils.check_hypergraph_node(f"{self.name}_IK_scale_mult", "multDoubleLinear")
+        ikStretchVal = utils.check_hypergraph_node(f"{self.name}_IK_stretch_val", "multiplyDivide")
+        cond = utils.check_hypergraph_node(f"{self.name}_IK_str_cond", "condition")
         """chainLen = utils.get_length_of_chain(self.stretchJoints[0], self.driver.aimVector)
         dist = make_distance(self.stretchJoints, self.ikCtl)"""
         # Set Attribute Values

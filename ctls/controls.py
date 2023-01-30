@@ -13,43 +13,25 @@ SHAPES = utils.get_data_from_json(os.path.join(utils.RSTPATH, "rabid-skwerl-tool
 # Joints
 ###################
 
-def make_limb_control_joints(jnts, twist_jnt=None, mid=True):
+def make_limb_bend_control_joints(jnts):
     # TODO: Needs refactor. Should only create one joint at each
-    grp = utils.make_group(f"{utils.get_info_from_joint(jnts[0], name=True)}_ctl_jnt_grp",
-                           parent=utils.make_group(f"{utils.get_info_from_joint(jnts[0], name=True)}_ctl_grp",
-                                                   parent=utils.make_group("ctl_grp")))
+    grp = utils.make_group(
+        f"{utils.get_info_from_joint(jnts[0], name=True)}_ctl_jnt_grp", parent=utils.make_group(
+            "ctl_jnt_grp", parent=utils.make_group("jnt_grp")))
     ctlJnts = []
-    for i, jnt in enumerate(jnts[:-1]):
-        span = constants.get_span(i, len(jnts))
-        spanGrp = utils.make_group(f"{utils.get_info_from_joint(jnts[0], name=True)}_{span}_ctl_jnt_grp", parent=grp)
-        baseJnt = utils.duplicate_chain([jnt], "ctl", spanGrp)[0]
-        pm.rename(baseJnt, baseJnt.name().replace(baseJnt.name().split("_")[-3], f"{span}01"))
-        baseJnt.radius.set(baseJnt.radius.get() * 4)
-        if i == 0 and twist_jnt is not None:
-            matrix.matrix_constraint(twist_jnt, spanGrp)
-        else:
-            matrix.matrix_constraint(jnt, spanGrp)
-        utils.reset_transforms([spanGrp], m=False)
-        pm.parent(baseJnt, spanGrp)
-        utils.reset_transforms([baseJnt], s=False)
-        ctlJnts.append(baseJnt)
-        r = 2
-        if not mid:
-            r = 1
-        for n in range(r):
-            j = pm.duplicate(baseJnt, n=baseJnt.name().replace(f"{span}01", f"{span}0{str(n+2)}"))[0]
-            pm.parent(j, spanGrp)
-            utils.reset_transforms([j], s=False)
-            pm.makeIdentity(j, a=1)
-            aimAxis = str(j.getRotationOrder())[0]
-            eval(f"j.translate{aimAxis}.set(jnts[i+1].translate{aimAxis}.get())")
-            if mid and n == 0:
-                eval(f"j.translate{aimAxis}.set(jnts[i+1].translate{aimAxis}.get() * 0.5)")
-            ctlJnts.append(j)
-        if mid:
-            midJnt = pm.PyNode(baseJnt.name().replace(f"{span}01", f"{span}02"))
-            midGrp = utils.make_offset_groups([midJnt], reset=False)
-            pm.parentConstraint([baseJnt, ctlJnts[-1]], midGrp, mo=1)
+    name = f"{utils.get_info_from_joint(jnts[0], name=True)}_mid_ctl_jnt"
+    for i, jnt in enumerate(jnts[1:-1]):
+        if len(jnts) > 3:
+            name = name.replace(name.split("_")[-3], f"mid{str(i+1).zfill(2)}")
+        ctlJntGrp = utils.make_group(f"{name}_grp", parent=grp)
+        ctlJnt = utils.duplicate_chain([jnt], "ctl", ctlJntGrp)[0]
+        pm.rename(ctlJnt, name)
+        ctlJnt.radius.set(ctlJnt.radius.get() * 4)
+        matrix.matrix_constraint(jnt, ctlJntGrp)
+        utils.reset_transforms([ctlJntGrp], m=False)
+        pm.parent(ctlJnt, ctlJntGrp)
+        utils.reset_transforms([ctlJnt], m=False)
+        ctlJnts.append(ctlJnt)
     return ctlJnts
 
 

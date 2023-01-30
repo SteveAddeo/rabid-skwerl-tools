@@ -3,6 +3,7 @@ import maya.api.OpenMaya as om
 
 from core import constants
 from core import utils
+from jnts import follow
 from jnts import orient
 from jnts import twist
 
@@ -10,7 +11,7 @@ from jnts import twist
 class Build(object):
     # TODO: Orient base to world needs more testing
     def __init__(self, guides_obj, spline=False, orientation="xyz", orient_tip=True,
-                 orient_base_to_world=True, orient_chain_to_world=False, make_twist=False):
+                 orient_base_to_world=True, orient_chain_to_world=False, make_twist=False, make_follow=False):
         self.guides = guides_obj
         self.spline = spline
         self.name = self.guides.name
@@ -35,6 +36,8 @@ class Build(object):
         self.check_rotation(self.driverJoints)
         if make_twist:
             self.twistObj = twist.Build(self.driverJoints[0])
+        if make_follow:
+            self.followObj = follow.Build(self.driverJoints, self.aimVector, self.upVector, self.upLoc)
         pm.select(cl=1)
 
     def check_rotation(self, joints=None, long_axis=None):
@@ -125,7 +128,6 @@ class Build(object):
             jntName = guide.name().replace("_guide", "_drv_jnt")
             jntPos = pm.xform(guide, q=1, ws=1, rp=1)
             jntRad = self.guides.scale * .1
-            print(jntName, jntPos, self.orientation, jntRad)
             jnt = pm.joint(n=jntName, p=jntPos, roo=self.orientation, rad=jntRad)
             pm.setAttr("{}.overrideEnabled".format(jntName), 1)
             pm.setAttr("{}.overrideColor".format(jntName), 1)
@@ -133,7 +135,8 @@ class Build(object):
         # Set proper rotation and orientation for the guides
         longAxis = self.get_long_axis(jntList[0])
         orient.joints_in_chain(jntList, orient_tip=self.orientTip, group=self.driverJointsGrp,
-                               base_to_world=self.orientBase, chain_to_world=self.orientToWorld)
+                               base_to_world=self.orientBase, chain_to_world=self.orientToWorld,
+                               neg=self.guides.invert, mirror=self.guides.mirror)
         self.check_rotation(jntList, longAxis)
         return jntList
 

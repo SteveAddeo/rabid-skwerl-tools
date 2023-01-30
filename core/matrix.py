@@ -7,7 +7,7 @@ def matrix_constraint(driver, driven, maintain_rotation=True, maintain_offset=Fa
     parent = utils.get_parent_and_children(driven)[0]
     if parent is not None:
         name = "_".join(driver.name().split("_")[:-1] + ["to"] + driven.name().split("_")[:-1] + ["mtrx"])
-        mult = utils.check_shading_node(name, "multMatrix")
+        mult = utils.check_hypergraph_node(name, "multMatrix")
         pm.connectAttr(driver.worldMatrix[0], mult.matrixIn[0], f=1)
         pm.connectAttr(parent.parentInverseMatrix[0], mult.matrixIn[1], f=1)
         pm.connectAttr(mult.matrixSum, driven.offsetParentMatrix, f=1)
@@ -15,7 +15,7 @@ def matrix_constraint(driver, driven, maintain_rotation=True, maintain_offset=Fa
         mult = None
         pm.connectAttr(driver.worldMatrix[0], driven.offsetParentMatrix, f=1)
     utils.reset_transforms([driven], m=False)
-    if maintain_rotation and driven.type == "joint":
+    if maintain_rotation and driven.type() == "joint":
         utils.transfer_offset_to_orient([driven])
     if maintain_offset:
         # TODO: get maintain offset work with compose and decompose matrix. Possibly a maintain offset function

@@ -50,18 +50,19 @@ def check_nodes(nodes=None):
     return nodes
 
 
-def check_shading_node(name, node_type):
+def check_hypergraph_node(name, node_type, shading=True):
     """
     Checks to see if a shading node exists and creates one if it doesn't
     :param name: str: the name of the node being checked
     :param node_type: str: the type of shader node being checked (ex: multiplyDoubleLinear)
+    :param shading: bool: if the node being created is a shading node
     :return: PyNode: the shading node being checked
     """
-    print(f"name is {name}")
     if pm.ls(name):
         return pm.PyNode(name)
-    node = pm.shadingNode(node_type, n=name, au=1)
-    return node
+    if not shading:
+        return pm.createNode(node_type, n=name)
+    return pm.shadingNode(node_type, n=name, au=1)
 
 
 #############
@@ -219,7 +220,7 @@ def make_curve_from_chain(joint, name=None, cubic=True, bind=None):
     if bind is not None:
         skin_to_joints(bind, crv)
     # Create a curve info node
-    info = check_shading_node(f"{name}_info", "curveInfo")
+    info = check_hypergraph_node(f"{name}_info", "curveInfo")
     pm.connectAttr(crv.worldSpace[0], info.inputCurve)
     return crv
 
@@ -301,7 +302,7 @@ def split_chain(jnt_chain, jnt_type="split", splits=1):
     # Create splits for each joint span
     for i, jnt in enumerate(jnt_chain[:-1]):
         # Create the base of the split chain
-        span = constants.get_span(i, len(jnt_chain))
+        span = constants.get_span(i, len(jnt_chain[:-1]))
         dupJnt = duplicate_chain([jnt], jnt_type, grp)[0]
         pm.rename(dupJnt, dupJnt.name().replace(dupJnt.name().split("_")[-3], f"{span}01"))
         spltJnts = [dupJnt]
@@ -384,8 +385,8 @@ def reset_transforms(nodes=None, t=True, r=True, s=True, m=True, o=True):
     if nodes is None:
         return None
     attrs = ["translate", "rotate", "scale", "jointOrient", "offsetParentMatrix"]
+    tansforms = [t, r, s, o, m]
     for node in nodes:
-        tansforms = [t, r, s, [x for x in [o] if node.type() == "joint"][0], m]
         for attr in [attr for attr in attrs if tansforms[attrs.index(attr)]]:
             for axis in constants.AXES:
                 val = 0
@@ -395,8 +396,10 @@ def reset_transforms(nodes=None, t=True, r=True, s=True, m=True, o=True):
                     if attr == "offsetParentMatrix":
                         node.offsetParentMatrix.set(constants.FROZENMTRX)
                         break
+                    elif attr == "jointOrient" and node.type() != "joint":
+                        continue
                     else:
-                        eval(f"node.{attr}{axis}.set(val)")
+                        eval(f"node.{attr}{axis}.set({val})")
                 except RuntimeError as e:
                     print(e)
 
