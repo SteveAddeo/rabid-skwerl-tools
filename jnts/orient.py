@@ -5,13 +5,13 @@ from core import utils
 
 
 def orient_joint(joint, aim_obj, up_obj=None, local=False, neg=False, mirror=False):
-    roo = str(joint.getRotationOrder())#[0]
+    roo = str(joint.getRotationOrder())
     up = constants.get_vector_from_axis(roo[1].capitalize(), mirror=mirror)
     aim = constants.get_vector_from_axis(roo[0].capitalize(), mirror=mirror)
     if local:
-        up = [v * -1 for v in constants.get_vector_from_axis(roo[2], mirror=mirror)]
+        up = [-v for v in constants.get_vector_from_axis(roo[2], mirror=mirror)]
     if neg:
-        up = [v * -1 for v in up]
+        up = [-v for v in up]
     if up_obj is None:
         aimConst = pm.aimConstraint([aim_obj], joint, aim=aim, u=up, wut="vector")
     else:

@@ -1,3 +1,5 @@
+import pymel.core as pm
+
 AXES = ["X", "Y", "Z"]
 TRNSFRMATTRS = ["translate", "rotate", "scale"]
 FROZENMTRX = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
@@ -20,10 +22,12 @@ def get_axis_matrix_range(axis):
         return [0, 3]
 
 
-def get_axis_vector(axis):
-    vectorList = [0.0, 0.0, 0.0]
-    vectorList[get_axis_index(axis)] = 1.0
-    return vectorList
+def get_axis_vector(axis, invert=False):
+    vector_list = [0.0, 0.0, 0.0]
+    vector_list[get_axis_index(axis)] = 1.0
+    if invert:
+        return [-vector for vector in vector_list]
+    return vector_list
 
 
 def get_constrain_attrs(const_type):
@@ -48,7 +52,7 @@ def get_span(i, chain_len, base_tip=0):
     elif i == 1 and chain_len == 3:
         span = ["mid", "mid"]
     else:
-        span = [f"mid{str(i + 1).zfill(2)}_", f"mid{str(i + 1).zfill(2)}_"]
+        span = [f"mid{str(i + 1).zfill(2)}", f"mid{str(i + 1).zfill(2)}"]
     return span[base_tip]
 
 
@@ -61,5 +65,20 @@ def get_vector_from_axis(axis="X", mirror=False):
 
 def is_positive(n):
     if not n > 0:
+        return False
+    return True
+
+
+def is_straight_line(vectors):
+    if len(vectors) < 3 or [v for v in vectors if type(v) != list]:
+        pm.warning("Three vectors are needed to properly calculate. Function returns True")
+        return True
+    ab_len = round(((vectors[0][0] - vectors[1][0]) ** 2 + (vectors[0][1] - vectors[1][1]) ** 2 + (
+                vectors[0][2] - vectors[1][2]) ** 2) ** 0.5, 3)
+    bc_len = round(((vectors[1][0] - vectors[2][0]) ** 2 + (vectors[1][1] - vectors[2][1]) ** 2 + (
+                vectors[1][2] - vectors[2][2]) ** 2) ** 0.5, 3)
+    ac_len = round(((vectors[0][0] - vectors[2][0]) ** 2 + (vectors[0][1] - vectors[2][1]) ** 2 + (
+                vectors[0][2] - vectors[2][2]) ** 2) ** 0.5, 3)
+    if ac_len < ab_len + bc_len:
         return False
     return True

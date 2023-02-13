@@ -24,29 +24,25 @@ class Build(object):
         self.mainUtilsGrp = utils.make_group("utils_grp", parent=self.rigGrp)
         self.driverJointsGrp = utils.make_group(f"{self.name}_drv_jnt_grp",
                                                 parent=utils.make_group("drv_jnt_grp", parent=self.mainJointsGrp))
-        self.aimVector = self.get_vector_from_axis(self.orientation[0].capitalize())
-        self.upVector = self.get_vector_from_axis(self.orientation[1].capitalize())
-        self.tertiaryVector = self.get_vector_from_axis(self.orientation[2].capitalize())
+        self.aimVector = constants.get_axis_vector(self.orientation[0].capitalize(), invert=self.guides.mirror)
+        self.upVector = constants.get_axis_vector(self.orientation[1].capitalize())
+        self.tertiaryVector = constants.get_axis_vector(self.orientation[2].capitalize(), invert=self.guides.mirror)
         self.driverJoints = self.make_driver_chain()
+        self.longAxis = self.get_long_axis()
+        self.check_rotation()
         self.upLoc = self.make_up_loc()
         self.crvName = f"{utils.get_info_from_joint(self.driverJoints[0], name=True)}_crv"
         self.crv = utils.make_curve_from_chain(self.driverJoints[0], name=self.crvName, bind=self.driverJoints)
         self.crvInfo = pm.PyNode(f"{self.crv.name()}_info")
-        self.longAxis = self.get_long_axis()
-        self.check_rotation(self.driverJoints)
         if make_twist:
             self.twistObj = twist.Build(self.driverJoints[0])
         if make_follow:
             self.followObj = follow.Build(self.driverJoints, self.aimVector, self.upVector, self.upLoc)
         pm.select(cl=1)
 
-    def check_rotation(self, joints=None, long_axis=None):
-        if joints is None:
-            joints = self.driverJoints
-        if long_axis is None:
-            long_axis = self.longAxis
-        for i, jnt in enumerate(joints[1:-1], 1):
-            prevJnt = joints[i - 1]
+    def check_rotation(self):
+        for i, jnt in enumerate(self.driverJoints[1:-1], 1):
+            prevJnt = self.driverJoints[i - 1]
             # Get the World Space Matrix of the joints
             jntWS = pm.xform(jnt, q=1, m=1, ws=1)
             prevJntWS = pm.xform(prevJnt, q=1, m=1, ws=1)
@@ -55,7 +51,7 @@ class Build(object):
             jntAxis = om.MVector(jntWS[mtxRange[0]:mtxRange[1]])
             prevJntAxis = om.MVector(prevJntWS[mtxRange[0]:mtxRange[1]])
             # Determine which vector to "look" at the axis from
-            if long_axis == "Z":
+            if self.longAxis == "Z":
                 axisV = constants.get_axis_vector("X")
             else:
                 axisV = constants.get_axis_vector("Z")
@@ -66,12 +62,45 @@ class Build(object):
             jntUp = constants.is_positive(jntAxisDir)
             prevJntUp = constants.is_positive(prevJntAxisDir)
             if not jntUp == prevJntUp:
-                self.fix_rotation(jnt, joints[i - 1], joints[i + 1])
+                self.fix_rotation(jnt, self.driverJoints[i - 1], self.driverJoints[i + 1])
+            self.check_mirror()
+            self.check_twist()
+
+    def check_mirror(self):
+        # There's a weird quirk where chains in a straight line don't mirror properly; this corrects that
+        guide_vectors = [[round(v, 3) for v in pm.xform(guide, q=1, ws=1, rp=1)] for guide in self.guides.allGuides][:3]
+        for joint in [joint for joint in self.driverJoints
+                      if constants.is_straight_line(guide_vectors) and self.guides.mirror]:
+            if joint != self.driverJoints[-1]:
+                children = pm.listRelatives(joint, c=1)
+                pm.parent(children, w=1)
+                eval(f"joint.rotate{str(joint.getRotationOrder())[0]}.set(180)")
+                pm.makeIdentity(joint, a=1)
+                pm.parent(children, joint)
+            elif self.orientTip:
+                utils.reset_transforms([joint], t=False, r=False, s=False, m=False, o=True)
+            else:
+                orient.tip_joint(joint, self.driverJoints[-2], to_joint=False)
 
     def check_rotation_order(self, node):
         if not self.orientation == (str(node.getRotationOrder()).lower()):
             pm.xform(node, roo=self.orientation, p=1)
         return node
+
+    def check_twist(self):
+        for joint in self.driverJoints:
+            joint_orient = joint.jointOrient.get()
+            if abs(round(joint_orient[constants.get_axis_index(str(joint.getRotationOrder())[0])], 3)) == 180:
+                if joint != self.driverJoints[-1]:
+                    joint_orient[constants.get_axis_index(str(joint.getRotationOrder())[0])] = 0
+                    children = pm.listRelatives(joint, c=1)
+                    pm.parent(children, w=1)
+                    joint.jointOrient.set(joint_orient)
+                    pm.parent(children, joint)
+                elif self.orientTip:
+                    utils.reset_transforms([joint], t=False, r=False, s=False, m=False, o=True)
+                else:
+                    orient.tip_joint(joint, self.driverJoints[-2], to_joint=False)
 
     def fix_rotation(self, joint, prev_jnt, next_jnt):
         rotList = [0, 0, 0]
@@ -109,12 +138,6 @@ class Build(object):
         else:
             return "Z"
 
-    def get_vector_from_axis(self, axis="X"):
-        vector = constants.get_axis_vector(axis)
-        if self.guides.mirror:
-            vector = [-v for v in vector]
-        return vector
-
     def make_driver_chain(self):
         # Double check to make sure driver chain doesn't exist
         if pm.listRelatives(self.driverJointsGrp, c=1):
@@ -129,15 +152,13 @@ class Build(object):
             jntPos = pm.xform(guide, q=1, ws=1, rp=1)
             jntRad = self.guides.scale * .1
             jnt = pm.joint(n=jntName, p=jntPos, roo=self.orientation, rad=jntRad)
-            pm.setAttr("{}.overrideEnabled".format(jntName), 1)
-            pm.setAttr("{}.overrideColor".format(jntName), 1)
+            jnt.overrideEnabled.set(1)
+            jnt.overrideColor.set(1)
             jntList.append(jnt)
         # Set proper rotation and orientation for the guides
-        longAxis = self.get_long_axis(jntList[0])
         orient.joints_in_chain(jntList, orient_tip=self.orientTip, group=self.driverJointsGrp,
                                base_to_world=self.orientBase, chain_to_world=self.orientToWorld,
                                neg=self.guides.invert, mirror=self.guides.mirror)
-        self.check_rotation(jntList, longAxis)
         return jntList
 
     def make_up_loc(self):

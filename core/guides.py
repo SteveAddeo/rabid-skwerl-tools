@@ -102,7 +102,7 @@ class Build(object):
             # Create and position the locator
             guide = pm.spaceLocator(n=guideName)
             guidesList.append(guide)
-            pm.setAttr(f"{guide}.translate{self.axis}", (i * scale) + (0.1 * scale))
+            eval(f"guide.translate{self.axis}.set(i * scale)")
             # Lock attributes you don't want to be changed so the rig is built properly
             for v in constants.AXES:
                 pm.setAttr(f"{guide}.rotate{v}", lock=True, keyable=False, channelBox=False)
@@ -115,6 +115,9 @@ class Build(object):
             else:
                 pm.parent(guide, prevGuide)
             prevGuide = guide
+        if self.invert and not self.mirror and not self.axis == self.mirrorAxis:
+            scale = -scale
+        eval(f"guidesList[0].translate{self.mirrorAxis}.set(scale * .1)")
         return guidesList
 
     def make_guides_curve(self):

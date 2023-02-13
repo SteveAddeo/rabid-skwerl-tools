@@ -23,6 +23,22 @@ def matrix_constraint(driver, driven, maintain_rotation=True, maintain_offset=Fa
     return mult
 
 
+def matrix_constrain_transform(driver, driven, maintain_rotation=True, maintain_offset=False,
+                               translate=True, rotate=True, scale=False):
+    mult = matrix_constraint(driver, driven, maintain_rotation, maintain_offset)
+    dec = utils.check_hypergraph_node(mult.name().replace("_mtrx", "_dec"), "decomposeMatrix", shading=False)
+    comp = utils.check_hypergraph_node(mult.name().replace("_mtrx", "_comp"), "composeMatrix", shading=False)
+    if translate:
+        pm.connectAttr(dec.outputTranslate, comp.inputTranslate, f=1)
+    if rotate:
+        pm.connectAttr(dec.outputRotate, comp.inputRotate, f=1)
+    if scale:
+        pm.connectAttr(dec.outputScale, comp.inputScale, f=1)
+    pm.connectAttr(mult.matrixSum, dec.inputMatrix, f=1)
+    pm.connectAttr(comp.outputMatrix, driven.offsetParentMatrix, f=1)
+    return mult, dec, comp
+
+
 def worldspace_to_matrix(obj, source):
     if int(pm.about(v=1)) >= 2020:
         mtrx = pm.xform(source, q=1, ws=1, m=1)

@@ -14,6 +14,10 @@ RSTPATH = os.path.join(ENVPATH, pm.about(v=1), "prefs", "scripts")
 # Deformer
 #############
 def set_sine_unlock_end(hndl):
+    """
+    Sets up a sine deformer so that the end isn't locked in place
+    :param hndl: the sine deformer being manipulated
+    """
     if not hndl.scaleY.get() == hndl.scaleX.get():
         return
     hndl.scaleY.set(2 * hndl.scaleY.get())
@@ -21,6 +25,10 @@ def set_sine_unlock_end(hndl):
 
 
 def set_sine_lock_end(hndl):
+    """
+    Sets up a sine deformer so that the end is locked in place
+    :param hndl: the sine deformer being manipulated
+    """
     if hndl.scaleY.get() == hndl.scaleX.get():
         return
     hndl.scaleY.set(0.5 * hndl.scaleY.get())
@@ -65,11 +73,79 @@ def check_hypergraph_node(name, node_type, shading=True):
     return pm.shadingNode(node_type, n=name, au=1)
 
 
+def check_locator(name):
+    """
+    Checks to see if a locator exists in a scene and creates one if it doesnt
+    :param name: str: name of the locator being checked
+    :return: PyNode: the locator being checked
+    """
+    if pm.ls(name):
+        return pm.PyNode(name)
+    return pm.spaceLocator(n=name)
+
+
+def invert_attribute(target_attr):
+    """
+    Creates a node that multiplies the source attribute value by -1 to invert the number. Can be used for both
+    singular and vector attribute formats
+    :param target_attr: PyNode.attr: the destination attribute
+    :return: the multiply node created
+    """
+    if not pm.listConnections(target_attr, p=1):
+        pm.warning(f"{target_attr} has no incoming connections")
+        return None
+    source = pm.listConnections(target_attr, p=1)[0]
+    if "unitConversion" in source.name():
+        conversion = pm.PyNode(source.name().split('.')[0])
+        source = pm.listConnections(conversion.input, p=1)[0]
+        pm.disconnectAttr(conversion.output, target_attr)
+        pm.delete(conversion)
+    multName = f"{'_'.join(source.name().split('.'))}_to_{'_'.join(target_attr.split('.'))}_invert_mult"
+    if "double" in source.type():
+        # Single attributes can use a Multiply Double Linear node with input 2 set to -1
+        mult = check_hypergraph_node(multName, "multDoubleLinear")
+        mult.input2.set(-1)
+    else:
+        # Vector formats require a Multiply Divide node with input 2 axes set to -1
+        mult = check_hypergraph_node(multName, "multiplyDivide")
+        for axis in constants.AXES:
+            eval(f"mult.input2{axis}.set(-1)")
+    # Connect the attributes (may throw a warning since you're forcing a connection)
+    pm.connectAttr(source, mult.input1, f=1)
+    pm.connectAttr(mult.output, target_attr, f=1)
+    return mult
+
+
+def make_distance(name, start, end):
+    """
+    Creates a Distance Between node for a given start and end node.
+    :param name: str: name of the distance between setup
+    :param start: PyNode: The base node at the start of the measurement
+    :param end: PyNode: The tip node at the end of the measurement
+    :return: PyNode: the distance between node that was created
+    """
+    baseLoc = check_locator(f"{name}_base_loc")
+    tipLoc = check_locator(f"{name}_tip_loc")
+    dist = check_hypergraph_node(f"{name}_dist", "distanceBetween")
+    pm.xform(baseLoc, t=pm.xform(start, q=1, ws=1, rp=1))
+    pm.xform(tipLoc, t=pm.xform(end, q=1, ws=1, rp=1))
+    pm.parent(baseLoc, start)
+    pm.parent(tipLoc, end)
+    pm.connectAttr(baseLoc.worldMatrix[0], dist.inMatrix1, f=1)
+    pm.connectAttr(tipLoc.worldMatrix[0], dist.inMatrix2, f=1)
+    return dist
+
+
 #############
 # Outliner
 #############
 
 def get_parent_and_children(node):
+    """
+    Returns a list of a given node's parent and list of children in the outliner
+    :param node: PyNode: Node being queiries
+    :return: list: The parent and child of the queried node
+    """
     if pm.listRelatives(node, p=1):
         parent = pm.listRelatives(node, p=1)[0]
     else:
@@ -244,6 +320,8 @@ def duplicate_chain(jnts, chain_type, dup_parent):
             pm.parent(children, w=1)
         # Duplicate joint
         dupName = jnt.name().replace(get_joint_type(jnt), chain_type)
+        print(f"=== Joint name is {jnt.name()}")
+        print(f"=== Duplicate name is {dupName}")
         dup = pm.duplicate(jnt, n=dupName)[0]
         # Set duplicate joint's radius based on chain type
         if chain_type == "FK":
