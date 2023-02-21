@@ -320,8 +320,6 @@ def duplicate_chain(jnts, chain_type, dup_parent):
             pm.parent(children, w=1)
         # Duplicate joint
         dupName = jnt.name().replace(get_joint_type(jnt), chain_type)
-        print(f"=== Joint name is {jnt.name()}")
-        print(f"=== Duplicate name is {dupName}")
         dup = pm.duplicate(jnt, n=dupName)[0]
         # Set duplicate joint's radius based on chain type
         if chain_type == "FK":
@@ -344,6 +342,23 @@ def duplicate_chain(jnts, chain_type, dup_parent):
             pm.parent(dup, dup_parent)
         dupJnts.append(dup)
     return dupJnts
+
+
+def make_joint(name, radius=1.0, parent=None, color=1):
+    """
+    Creates a joint with a given name, radius, and parent node
+    :param name: str: the name of the joint
+    :param radius: float: the radius of the joint
+    :param parent: PyNode: the node the user wants to parent the joint to
+    :param color: desired color of the joint
+    :return: PyNode: the joint that was created
+    """
+    joint = pm.joint(n=name, rad=radius)
+    joint.overrideEnabled.set(1)
+    joint.overrideColor.set(color)
+    if parent is not None:
+        pm.parent(joint, parent)
+    return joint
 
 
 def skin_to_joints(bind_jnts, obj, name=None):
@@ -429,6 +444,16 @@ def write_data_to_json(file_path, data):
 # Transforms
 #############
 
+def is_frozen(node=None):
+    # TODO: this function doesn't work
+    nodes = check_nodes([node])
+    if nodes is None:
+        return False
+    if nodes[0].getMatrix() == pm.dt.Matrix() and not pm.xform(nodes[0], q=1, ws=1, rp=1) == nodes[0].translate.get():
+        return True
+    return False
+
+
 def freeze_transforms(nodes=None):
     """
     Freezes the transforms of a given list of nodes
@@ -482,6 +507,20 @@ def reset_transforms(nodes=None, t=True, r=True, s=True, m=True, o=True):
                     print(e)
 
 
+def point_constraint_move(source, target):
+    """
+    Uses a point constrain to move a target node then deletes the consrtraint
+    :param source: PyNode: the object being moved to
+    :param target: PyNode: the object being moved
+    """
+    constraint = pm.pointConstraint(source, target)
+    pm.delete(constraint)
+    try:
+        pm.makeIdentity(target, a=1)
+    except RuntimeError as e:
+        pm.warning(str(e))
+
+
 def transfer_transforms_to_offset(nodes=None):
     """
     Moves all transform values from the transform attributs to the Offset Parent Matrix attribute
@@ -510,8 +549,8 @@ def transfer_offset_to_orient(nodes=None):
         if not node.type() == "joint":
             continue
         decompose = pm.createNode("decomposeMatrix", n="tempDM")
-        source = pm.listConnections(node.offsetParentMatrix, d=0)[0]
-        pm.connectAttr(source.matrixSum, decompose.inputMatrix)
+        source = pm.listConnections(node.offsetParentMatrix,  p=1, d=0)[0]
+        pm.connectAttr(source, decompose.inputMatrix)
         decompose.inputRotateOrder.set(node.rotateOrder.get())
         node.jointOrient.set([-v for v in decompose.outputRotate.get()])
         pm.delete(decompose)

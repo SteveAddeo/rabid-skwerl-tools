@@ -1,6 +1,7 @@
 import pymel.core as pm
 
 from core import utils
+from core import matrix
 from rigs import ik
 
 
@@ -43,4 +44,8 @@ class Build(object):
         pm.parent(hndl, self.followHndlGrp)
         pm.pointConstraint(self.driverJoints[-1], hndl)
         pm.parent(self.upLoc, flwJnts[0])
+        # Setup Constraints
+        matrix.point_constraint(self.driverJoints[-1], hndl, frozen=True)
+        pm.pointConstraint(self.driverJoints[0], flwJnts[0])
+        pm.scaleConstraint(pm.listRelatives(self.driverJoints[0], p=1)[0], self.followJointGrp)
         return flwJnts

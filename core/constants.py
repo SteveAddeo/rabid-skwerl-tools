@@ -6,6 +6,15 @@ FROZENMTRX = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0
 ROTATEORDER = ["xyz", "yzx", "zxy", "xzy", "yxz", "zyx"]
 
 
+def get_attr_suffix(attr):
+    if attr == "translate":
+        return "_pos"
+    elif attr == "rotate":
+        return "_rot"
+    else:
+        return "_sca"
+
+
 def get_axis_index(axis):
     for i, a in enumerate(AXES):
         if a == axis.upper():

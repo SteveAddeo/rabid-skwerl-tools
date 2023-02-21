@@ -176,8 +176,12 @@ class Build(object):
             srcJnts = self.fkJoints
             tgtJnts = self.ikJoints
         for i, jnt in enumerate(srcJnts):
-            matrix.matrix_constraint(jnt, tgtJnts[i], maintain_rotation=False)
-            matrix.matrix_constraint(tgtJnts[i], self.driverJoints[i], maintain_rotation=False)
+            tgt_const = matrix.parent_constraint(jnt, tgtJnts[i])
+            drive_const = matrix.parent_constraint(tgtJnts[i], self.driverJoints[i])
+            tgt_const.useTranslate.set(0)
+            drive_const.useTranslate.set(0)
+
+
 
 
 

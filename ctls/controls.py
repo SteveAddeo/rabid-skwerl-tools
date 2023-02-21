@@ -27,7 +27,9 @@ def make_limb_bend_control_joints(jnts):
         ctlJnt = utils.duplicate_chain([jnt], "ctl", ctlJntGrp)[0]
         pm.rename(ctlJnt, name)
         ctlJnt.radius.set(ctlJnt.radius.get() * 4)
-        matrix.matrix_constrain_transform(jnt, ctlJntGrp)
+        # TODO: a warning is being thrown here. It looks like this part of the code is
+        #  running multiple times not a big deal
+        matrix.parent_constraint(jnt, ctlJntGrp)
         utils.reset_transforms([ctlJntGrp], m=False)
         pm.parent(ctlJnt, ctlJntGrp)
         utils.reset_transforms([ctlJnt], m=False)
