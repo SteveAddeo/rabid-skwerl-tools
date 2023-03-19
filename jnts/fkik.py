@@ -91,7 +91,7 @@ class Build(object):
         self.driver = driver_obj
         if self.driver is not None:
             self.name = self.driver.name
-            self.driverJoints = self.driver.driverJoints
+            self.driverJoints = self.driver.driver_joints
         else:
             self.name = utils.get_info_from_joint(pm.ls(sl=1)[0], name=1)
             self.driverJoints = utils.get_joints_in_chain(pm.ls(sl=1)[0])
@@ -103,9 +103,9 @@ class Build(object):
         pm.xform(self.ikJointsGrp, t=pm.xform(self.driverJoints[0], q=1, ws=1, rp=1))
         if self.driver is not None:
             if not pm.listRelatives("FK_jnt_grp", p=1):
-                pm.parent("FK_jnt_grp", self.driver.mainJointsGrp)
+                pm.parent("FK_jnt_grp", self.driver.main_joints_grp)
             if not pm.listRelatives("IK_jnt_grp", p=1):
-                pm.parent("IK_jnt_grp", self.driver.mainJointsGrp)
+                pm.parent("IK_jnt_grp", self.driver.main_joints_grp)
         self.fkJoints = self.get_chain(chain_type="FK")
         self.ikJoints = self.get_chain(chain_type="IK")
         if bc:

@@ -158,6 +158,14 @@ def get_parent_and_children(node):
 
 
 def make_group(name, child=None, parent=None):
+    """
+    Looks for or creates then returns a group with a given name, parents it to a defined parent and adds
+    defined children to its hierarchy
+    :param name: str: the name of the new group
+    :param child: PyNode or list: children of the group being created
+    :param parent: PyNode: parent of the group being created
+    :return: the new group that was created
+    """
     if pm.ls(name):
         grp = pm.PyNode(name)
     else:
@@ -170,6 +178,14 @@ def make_group(name, child=None, parent=None):
 
 
 def make_offset_groups(nodes=None, name=None, freeze=True, reset=True):
+    """
+    Creates an offset group
+    :param nodes:
+    :param name:
+    :param freeze:
+    :param reset:
+    :return:
+    """
     offsetGrps = []
     nodes = check_nodes(nodes)
     if nodes is None:
@@ -180,6 +196,7 @@ def make_offset_groups(nodes=None, name=None, freeze=True, reset=True):
         if name is None:
             name = f"{node.name()}_grp"
         grp = make_group(name)
+        # TODO: this only changes position. Needs to update rotation too
         pm.xform(grp, t=pm.xform(node, q=1, ws=1, rp=1))
         if pm.listRelatives(node, p=1):
             pm.parent(grp, pm.listRelatives(node, p=1)[0])
@@ -193,12 +210,19 @@ def make_offset_groups(nodes=None, name=None, freeze=True, reset=True):
 
 
 def parent_crv(name=None, nodes=None):
+    """
+    Parents curve shapes to a node allowing the curve to directly control it
+    :param name: str: name of the returned transform node
+    :param nodes: list: curve shape nodes being parented
+    :return: transform node curves are parented to
+    """
+    # TODO: this needs testing
     nodes = check_nodes(nodes)
     if nodes is None:
         return None
     # Get the name of the curve
     if name is None:
-        name = str(nodes[-1])
+        name = nodes[-1].name()
     # Create an empty group to act as the parents for your curves
     transform = pm.group(n=name, em=1)
     # Get position and pivot data
@@ -230,6 +254,12 @@ def parent_crv(name=None, nodes=None):
 #############
 
 def get_length_of_chain(joint, aim="X"):
+    """
+    Returns the unit length of a joint chain (not the number of chains)
+    :param joint: PyNode: the base joint for the defined chain
+    :param aim: str: the aim axis of the given joint
+    :return: float: the length of the joint chaoin
+    """
     jnts = get_joints_in_chain(joint)[1:]
     chainLen = 0
     for jnt in jnts:
@@ -239,6 +269,15 @@ def get_length_of_chain(joint, aim="X"):
 
 
 def get_info_from_joint(joint, name=False, num=False, side=False, task=False):
+    """
+    Returns returns specified information from a given joint
+    :param joint: PyNode: the joint being queried
+    :param name: bool: returns the name of the defined joint
+    :param num: bool: returns the number of joints in the chain with defined joint as base
+    :param side: bool: returns the side the defined joint exists on
+    :param task: bool: returns the name of the task the defined joint is assigned to (ex: driver)
+    :return: the data specified
+    """
     if name:
         return "_".join(joint.name().split("_")[:2])
     if num:
@@ -250,12 +289,22 @@ def get_info_from_joint(joint, name=False, num=False, side=False, task=False):
 
 
 def get_joints_in_chain(joint):
+    """
+    Returns the a list of joints in the chain of a defined base joint
+    :param joint: PyNode: the base joint of the chain
+    :return: list: the joints in the chain
+    """
     jnts = [jnt for jnt in reversed(pm.listRelatives(joint, ad=1)) if jnt.type() == "joint"]
     jnts.insert(0, joint)
     return jnts
 
 
 def get_joint_type(joint):
+    """
+    Returns the type of joint given (ex: base_IK)
+    :param joint: PyNode: joint being queried
+    :return: str: the joint type
+    """
     jointType = joint.name().split("_")[-2]
     subTypes = ["base", "mid", "tip"]
     if jointType in subTypes:

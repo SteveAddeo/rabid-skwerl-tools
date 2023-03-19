@@ -14,7 +14,6 @@ SHAPES = utils.get_data_from_json(os.path.join(utils.RSTPATH, "rabid-skwerl-tool
 ###################
 
 def make_limb_bend_control_joints(jnts):
-    # TODO: Needs refactor. Should only create one joint at each
     grp = utils.make_group(
         f"{utils.get_info_from_joint(jnts[0], name=True)}_ctl_jnt_grp", parent=utils.make_group(
             "ctl_jnt_grp", parent=utils.make_group("jnt_grp")))

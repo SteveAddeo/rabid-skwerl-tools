@@ -52,6 +52,7 @@ def make_spline_control_joints(joint, curve, span="upper", splits=1, const_node=
     if splits:
         for i, midJnt in enumerate(ctl_jnts[1:-1]):
             mid_grp = utils.make_offset_groups([midJnt], reset=False)
+            # TODO: will this work just as well with the matrix orient constraint?
             pm.orientConstraint(mid_grp, ctl_jnts[0])
             pt_const = pm.pointConstraint([ctl_jnts[0], ctl_jnts[-1]], mid_grp, mo=1)
             eval(f"pt_const.{ctl_jnts[0].name()}W0.set({1 - ((i + 1) / (splits + 1))})")
@@ -78,7 +79,7 @@ def make_spline_twist(jnt_chain, curve, handle, index=0, twist_jnt=None, invert=
     handle.dWorldUpType.set(3)
     handle.dForwardAxis.set(constants.AXES.index(twist_axis) * 2)
     handle.dWorldUpAxis.set(UPINDEX[up_axis])
-    for i, v in enumerate(constants.get_vector_from_axis(up_axis)):
+    for i, v in enumerate(constants.get_axis_vector(up_axis)):
         eval(f"handle.dWorldUpVector{constants.AXES[i]}.set({v})")
     handle.dTwistValueType.set(1)
     # Make the connections
@@ -98,7 +99,7 @@ def make_spline_twist(jnt_chain, curve, handle, index=0, twist_jnt=None, invert=
         utils.invert_attribute(handle.dTwistEnd)
         handle.dForwardAxis.set(handle.dForwardAxis.get() + 1)
         handle.dWorldUpAxis.set(handle.dWorldUpAxis.get() + 1)
-        for i, v in enumerate(constants.get_vector_from_axis(up_axis, mirror=True)):
+        for i, v in enumerate(constants.get_axis_vector(up_axis, invert=True)):
             eval(f"handle.dWorldUpVector{constants.AXES[i]}.set({v})")
 
 

@@ -76,7 +76,7 @@ class Build:
 
     def get_handles(self):
         hndls = {}
-        for i, jnt in enumerate(self.driver.driverJoints[0:-1]):
+        for i, jnt in enumerate(self.driver.driver_joints[0:-1]):
             hndlName = str(jnt).replace("_base_jnt", "_IK_hndl")
             if pm.ls(hndlName):
                 hndl = pm.ls(hndlName)[0]
@@ -84,7 +84,7 @@ class Build:
                 # TODO: this doesn't appear to be running when it should
                 hndl = self.make_handle(jnt, hndlName)
             if not [c for c in pm.listConnections(hndl, c=1) if pm.nodeType(c[1]) == "pointConstraint"]:
-                pm.pointConstraint(self.driver.driverJoints[i+1], hndl, mo=1)
+                pm.pointConstraint(self.driver.driver_joints[i + 1], hndl, mo=1)
             hndls[jnt] = hndl
         return hndls
 
@@ -94,7 +94,7 @@ class Build:
             parentGrp = self.followJointsGrp
         else:
             parentGrp = self.twistJointsGrp
-        for i, jnt in enumerate(self.driver.driverJoints[0:-1]):
+        for i, jnt in enumerate(self.driver.driver_joints[0:-1]):
             grpName = "{}_grp".format(str(jnt).replace("prime", jnt_type))
             jntGrp = pm.ls(grpName)
             # Create a group for the twist joints if one does not exist
@@ -108,9 +108,9 @@ class Build:
                 jntList = self.make_joints(jnt, jntGrp[0], jnt_type)
             if not [child for child in utils.get_parent_and_children(jntGrp[0])[1] if "Constraint" in str(child)]:
                 if i == 0:
-                    pm.pointConstraint(self.driver.driverJoints[i], jntGrp[0], mo=1)
+                    pm.pointConstraint(self.driver.driver_joints[i], jntGrp[0], mo=1)
                 else:
-                    pm.parentConstraint(self.driver.driverJoints[i-1], jntGrp, mo=1)
+                    pm.parentConstraint(self.driver.driver_joints[i - 1], jntGrp, mo=1)
             jntsDict[jnt] = jntList
         return jntsDict
 
@@ -131,11 +131,11 @@ class Build:
             up = self.upLocators[prime_jnt][i]
             if i == len(self.twistJoints[prime_jnt]) - 1:
                 aimJnt = self.twistJoints[prime_jnt][0]
-                aimVec = [-v for v in self.driver.aimVector]
+                aimVec = [-v for v in self.driver.aim_vector]
             else:
                 aimJnt = self.twistJoints[prime_jnt][-1]
-                aimVec = self.driver.aimVector
-            upV = self.driver.upVector
+                aimVec = self.driver.aim_vector
+            upV = self.driver.up_vector
             aim = pm.aimConstraint(aimJnt, jnt, aim=aimVec, u=upV, wuo=up, wut="objectrotation")
             aimConsts.append(aim)
         return aimConsts
@@ -191,7 +191,7 @@ class Build:
         upLocs = []
         for jnt in self.twistJoints[prime_jnt]:
             loc = pm.spaceLocator(n=str(jnt).replace("_jnt", "_up_loc"))
-            pm.move(loc, [(v * self.driver.guidesObj.scale * .2) for v in self.driver.upVector], r=1, os=1)
+            pm.move(loc, [(v * self.driver.guidesObj.scale * .2) for v in self.driver.up_vector], r=1, os=1)
             pm.makeIdentity(loc, a=1)
             offsetGrp = utils.make_offset_groups([loc])[0]
             pm.parent(offsetGrp, jnt)

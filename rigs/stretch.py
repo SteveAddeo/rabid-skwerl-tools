@@ -3,7 +3,6 @@ from core import utils
 
 
 class Build(object):
-    # TODO: end joint looks like it has double transforms when rotating around the Z axis
     # TODO: only works for spline curve rigs like necks and tails. Needs to be able to work with
     #  distance-based rigs like arms and legs
     def __init__(self, stretch_jnts, curve, skin_jnts=None, vol=True):
@@ -66,7 +65,7 @@ class Build(object):
         ikScaleMult = utils.check_hypergraph_node(f"{self.name}_IK_scale_mult", "multDoubleLinear")
         ikStretchVal = utils.check_hypergraph_node(f"{self.name}_IK_stretch_val", "multiplyDivide")
         cond = utils.check_hypergraph_node(f"{self.name}_IK_str_cond", "condition")
-        chainLen = utils.get_length_of_chain(self.stretchJoints[0], self.driver.aimVector)
+        chainLen = utils.get_length_of_chain(self.stretchJoints[0], self.driver.aim_vector)
         dist = utils.make_distance(name=f"{utils.get_info_from_joint(self.stretchJoints[0], name=True)}_IK",
                                    start=self.stretchJoints[0], end=self.ikCtl)
         # Set Attribute Values

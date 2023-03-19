@@ -5,11 +5,21 @@ from core import utils
 
 
 def orient_joint(joint, aim_obj, up_obj=None, local=False, neg=False, mirror=False):
+    """
+    
+    :param joint:
+    :param aim_obj:
+    :param up_obj:
+    :param local:
+    :param neg:
+    :param mirror:
+    :return:
+    """
     roo = str(joint.getRotationOrder())
-    up = constants.get_vector_from_axis(roo[1].capitalize(), mirror=mirror)
-    aim = constants.get_vector_from_axis(roo[0].capitalize(), mirror=mirror)
+    up = constants.get_axis_vector(roo[1].capitalize(), invert=mirror)
+    aim = constants.get_axis_vector(roo[0].capitalize(), invert=mirror)
     if local:
-        up = [-v for v in constants.get_vector_from_axis(roo[2], mirror=mirror)]
+        up = [-v for v in constants.get_axis_vector(roo[2], invert=mirror)]
     if neg:
         up = [-v for v in up]
     if up_obj is None:

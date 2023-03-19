@@ -338,10 +338,10 @@ class Builder(Ribbon):
         if self.driver.name.split("_")[1] in INVERT:
             self.invert = True
         super().__init__(name=f"{self.driver.name}_rbn",
-                         spans=spans_per*len(self.driver.driverJoints),
-                         width=utils.get_length_of_chain(self.driver.driverJoints[0]),
-                         orient=self.driver.aimVector,
-                         normal=self.driver.upVector,
+                         spans=spans_per*len(self.driver.driver_joints),
+                         width=utils.get_length_of_chain(self.driver.driver_joints[0]),
+                         orient=self.driver.aim_vector,
+                         normal=self.driver.up_vector,
                          mirror=self.driver.mirror,
                          invert=self.invert,
                          lock_tip=self.lockTip)
@@ -351,8 +351,8 @@ class Builder(Ribbon):
         # Set position
         baseLoc = pm.spaceLocator(n=f"{self.name}_lock_base")
         tipLoc = pm.spaceLocator(n=f"{self.name}_lock_tip")
-        pm.xform(baseLoc, t=pm.xform(self.driver.driverJoints[0], q=1, ws=1, rp=1), ws=1)
-        pm.xform(tipLoc, t=pm.xform(self.driver.driverJoints[-1], q=1, ws=1, rp=1), ws=1)
+        pm.xform(baseLoc, t=pm.xform(self.driver.driver_joints[0], q=1, ws=1, rp=1), ws=1)
+        pm.xform(tipLoc, t=pm.xform(self.driver.driver_joints[-1], q=1, ws=1, rp=1), ws=1)
         ptCon = pm.pointConstraint(baseLoc, tipLoc, hndl)
         pm.connectAttr(self.rbn.lockTip, f"{ptCon.name()}.{baseLoc}W0")
         pm.parent(baseLoc, tipLoc, f"{self.name}_{hndl.name().split('_')[-3]}_grp")
@@ -416,13 +416,13 @@ class Builder(Ribbon):
         # Parent ribbon to group
         grp = utils.make_group(f"{self.name}_grp", child=rbn, parent=utils.make_group(
             "rbn_grp", parent=utils.make_group("utils_grp")))
-        pm.xform(grp, t=pm.xform(self.driver.driverJoints[0], q=1, ws=1, rp=1))
+        pm.xform(grp, t=pm.xform(self.driver.driver_joints[0], q=1, ws=1, rp=1))
         # TODO: skin ribbon to chain
         return rbn
 
     def position_ribbon_on_chain(self, rbn):
         # Set Variables
-        num = utils.get_info_from_joint(self.driver.driverJoints[0], num=True)
+        num = utils.get_info_from_joint(self.driver.driver_joints[0], num=True)
         dv = [2, 2, 2]
         dv[constants.get_axis_index(self.orient)] = num
         # Create Lattice
@@ -430,14 +430,14 @@ class Builder(Ribbon):
         lat = pm.lattice(pm.ls(sl=1), dv=dv, oc=1, foc=1)
         self.move_lattice(lat)
         # Delete history and transform data
-        pm.xform(rbn, piv=pm.xform(self.driver.driverJoints[0], q=1, ws=1, rp=1), ws=1)
+        pm.xform(rbn, piv=pm.xform(self.driver.driver_joints[0], q=1, ws=1, rp=1), ws=1)
         pm.makeIdentity(rbn, a=1)
         pm.delete(rbn, ch=1)
 
     def move_lattice(self, lattice):
         rbnDir = [self.orient, self.normal]
         lattice[0].local.set(1)
-        for i, jnt in enumerate(self.driver.driverJoints):
+        for i, jnt in enumerate(self.driver.driver_joints):
             pm.select(f"{lattice[1]}.pt[0:1][0:1][{i}]", r=1)
             if "X" in rbnDir and "Y" in rbnDir:
                 pm.move((pm.xform(jnt, q=1, ws=1, rp=1))[:1], xy=1, ws=1)
@@ -449,6 +449,6 @@ class Builder(Ribbon):
 
     def orient_deformer(self, hndl):
         up = constants.get_axis_vector(self.normal)
-        pos = pm.pointConstraint(self.driver.driverJoints[0], self.driver.driverJoints[-1], hndl)
-        aim = pm.aimConstraint(self.driver.driverJoints[-1], hndl, aim=[0, 1, 0], u=[1, 0, 0], wu=up, wut="vector")
+        pos = pm.pointConstraint(self.driver.driver_joints[0], self.driver.driver_joints[-1], hndl)
+        aim = pm.aimConstraint(self.driver.driver_joints[-1], hndl, aim=[0, 1, 0], u=[1, 0, 0], wu=up, wut="vector")
         pm.delete(aim, pos)
