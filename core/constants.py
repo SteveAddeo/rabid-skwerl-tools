@@ -94,7 +94,7 @@ def get_span(i, chain_len, base_tip=0):
     elif i == 1 and chain_len == 3:
         span = ["mid", "mid"]
     else:
-        span = [f"mid{str(i + 1).zfill(2)}", f"mid{str(i + 1).zfill(2)}"]
+        span = [f"mid{str(i).zfill(2)}", f"mid{str(i).zfill(2)}"]
     return span[base_tip]
 
 

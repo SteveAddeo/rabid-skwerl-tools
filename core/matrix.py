@@ -24,6 +24,7 @@ def constrain(driver, driven, frozen=False, offset=False, reset=False):
     if reset:
         utils.reset_transforms([driven], m=False)
     if offset:
+        # TODO: offset may be preserved by turning off inherit transforms!
         offset = offset_driven(driver, driven)
         return offset
     return None
@@ -58,6 +59,55 @@ def decompose_constraint(target, pick=False):
         pm.connectAttr(eval(f"dec.output{attr.capitalize()}"), eval(f"comp.input{attr.capitalize()}"), f=1)
     pm.connectAttr(comp.outputMatrix, eval(f"target.{source_attr}"), f=1)
     return dec, comp
+
+
+def make_blend(drivers, driven, decompose=False):
+    """
+    Creates a blendMatrix node between a defined pair of driver/driven nodes. The function can also use a decompose
+    matrix node to directly drive the driven transforms rather than its offset parent matrix.
+    :param drivers: list: the source nodes driving the driven node
+    :param driven: PyNode: the target node being controlled by the driver node
+    :param decompose: bool: if the driven node needs its transforms to be constrained
+    :return: the blendMatrix node that is created.
+    """
+    # Set variables and create blend node
+    blend_name = "_".join(driven.name().split("_")[:-1] + ["blend"])
+    if pm.ls(blend_name):
+        return pm.PyNode(blend_name)
+    blend = utils.check_hypergraph_node(blend_name, "blendMatrix", shading=False)
+    # Connect drivers to blend
+    driven.inheritsTransform.set(0)
+    for i, driver in enumerate(drivers):
+        if i:
+            blend.target[i-1].targetMatrix.get()
+            pm.connectAttr(driver.worldMatrix[0], blend.target[i-1].targetMatrix, f=1)
+            continue
+        pm.connectAttr(driver.worldMatrix[0], blend.inputMatrix, f=1)
+    # Connect blend to driven
+    pm.connectAttr(blend.outputMatrix, driven.offsetParentMatrix, f=1)
+    utils.reset_transforms([driven], m=False)
+    if decompose:
+        make_decompose(blend, driven)
+    return blend
+
+
+def make_decompose(driver, driven):
+    """
+    Creates a decomposeMatrix node between a defined pair of driver/driven nodes.
+    :param driver: PyNode: the source node driving the driven node
+    :param driven: PyNode: the target node being controlled by the driver node
+    :return: the decomposeMatrix node that is created.
+    """
+    # Set variables and create decompose node
+    decompose_name = "_".join(driver.name().split("_")[:-1] + ["to"] + driven.name().split("_")[:-1] + ["dec"])
+    decompose = utils.check_hypergraph_node(decompose_name, "decomposeMatrix", shading=False)
+    driver_attr = pm.listConnections(driven.offsetParentMatrix, p=1)[0]
+    pm.disconnectAttr(driver_attr, driven.offsetParentMatrix)
+    # Make connections
+    pm.connectAttr(driver_attr, decompose.inputMatrix, f=1)
+    for attr in constants.TRNSFRMATTRS:
+        pm.connectAttr(eval(f"decompose.output{attr.capitalize()}"), eval(f"driven.{attr}"), f=1)
+    return decompose
 
 
 def make_pick(driver, driven):
@@ -106,6 +156,7 @@ def make_constraint(driver, driven, translate=False, rotate=False, scale=False, 
     if not shear:
         pick.useShear.set(0)
     if offset:
+        # TODO: offset may be preserved by turning off inherit transforms!
         offset_constraint(pick, pick=True)
     return pick
 

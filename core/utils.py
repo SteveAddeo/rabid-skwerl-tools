@@ -368,7 +368,10 @@ def duplicate_chain(jnts, chain_type, dup_parent):
         if children is not None:
             pm.parent(children, w=1)
         # Duplicate joint
-        dupName = jnt.name().replace(get_joint_type(jnt), chain_type)
+        try:
+            dupName = jnt.name().replace(get_joint_type(jnt), chain_type)
+        except IndexError:
+            dupName = "_".join([jnt.name(), chain_type])
         dup = pm.duplicate(jnt, n=dupName)[0]
         # Set duplicate joint's radius based on chain type
         if chain_type == "FK":

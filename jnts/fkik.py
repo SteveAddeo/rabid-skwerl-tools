@@ -1,14 +1,14 @@
 import pymel.core as pm
 
-from core import constants
 from core import matrix
 from core import utils
+from core import blend_colors
 from rigs import stretch
 
 
 # TODO: currently, the base joint is receiving transform values when the offset should be maintained
 
-def make_fkik_chains(jnts=None, bc=True, primary="IK"):
+def make_fkik_chains(jnts=None, bc=True, primary=None):
     # get list of joints if none are provided
     if jnts is None:
         if not pm.ls(sl=1):
@@ -24,70 +24,10 @@ def make_fkik_chains(jnts=None, bc=True, primary="IK"):
     return fkikData
 
 
-class BlendColors(object):
-    def __init__(self, name=None, drivers=None, driven=None, const_type="all"):
-        self.name = name
-        self.drivers = drivers
-        self.driven = driven
-        if self.drivers is None or self.driven is None:
-            self.get_driver_driven()
-        if name is None:
-            self.name = "_".join(self.driven.name().split("_")[:-2])
-        self.constType = const_type
-        self.blendColors = self.get_blend_colors()
-
-    def check_connections(self, bc_nodes):
-        for node in bc_nodes:
-            if str(node).split("_")[-2] == "pos":
-                attr = "translate"
-            elif str(node).split("_")[-2] == "rot":
-                attr = "rotate"
-            else:
-                attr = "scale"
-            if not pm.isConnected(f"{self.drivers[0]}.{attr}", f"{node}.color1"):
-                pm.connectAttr(f"{self.drivers[0]}.{attr}", f"{node}.color1")
-            if not pm.isConnected(f"{node}.output", f"{self.driven.name()}.{attr}"):
-                pm.connectAttr(f"{node}.output", f"{self.driven.name()}.{attr}")
-            if len(self.drivers) > 1:
-                if not pm.isConnected(f"{self.drivers[1]}.{attr}", f"{node}.color2"):
-                    pm.connectAttr(f"{self.drivers[1]}.{attr}", f"{node}.color2")
-            else:
-                pm.setAttr("{}.blender".format(node), 1)
-
-    def get_blend_colors(self):
-        bcNodeList = []
-        for attr in constants.get_constrain_attrs(self.constType):
-            # Create a Blend Colors node (if one doesn't already exist)
-            bcName = f"{self.name}_{attr}_bc"
-            if pm.ls(bcName):
-                bcNodeList.append(pm.PyNode(bcName))
-                continue
-            bcNode = pm.createNode("blendColors", n=bcName)
-            # Make sure both color(transform) values are set to 0
-            bcNode.color1.set(0, 0, 0)
-            bcNode.color2.set(0, 0, 0)
-            # Add node to list of blend colors
-            bcNodeList.append(bcNode)
-        self.check_connections(bcNodeList)
-        return bcNodeList
-
-    def get_driver_driven(self):
-        # Check to make sure at least two objects are selected
-        if not len(pm.ls(sl=1)) >= 2:
-            return pm.error("Please select your driver objects and a driven object")
-        # Get driven object
-        self.driven = pm.ls(sl=1)[-1]
-        # Get driver objects (max 2)
-        drivers = [node for node in pm.ls(sl=1) if node not in self.driven]
-        if len(drivers) > 2:
-            pm.warning("more than two drivers were selected; only the first two are used")
-        self.drivers = drivers[0:2]
-
-
 # TODO: controls_obj should be dropped in here as well. The object-oriented nature of this will allow
 #  data to be queried more easily
 class Build(object):
-    def __init__(self, driver_obj=None, fk=True, ik=True, bc=True, primary="IK"):
+    def __init__(self, driver_obj=None, fk=True, ik=True, bc=False, primary=None):
         self.driver = driver_obj
         if self.driver is not None:
             self.name = self.driver.name
@@ -109,10 +49,13 @@ class Build(object):
         self.fkJoints = self.get_chain(chain_type="FK")
         self.ikJoints = self.get_chain(chain_type="IK")
         if bc:
-            self.blendColors = self.get_blend_colors()
+            self.blends = self.get_blends(mtrx=False)
         else:
-            self.primary = primary
-            self.make_matrix_constraints()
+            if primary is None:
+                self.blends = self.get_blends(mtrx=True)
+            else:
+                self.primary = primary
+                self.make_matrix_constraints()
 
         # TODO: setup IK system
         # TODO: determine when to use a spline
@@ -128,19 +71,22 @@ class Build(object):
             return False
         return True
 
-    def get_blend_colors(self):
+    def get_blends(self, mtrx=True):
         if not self.fk and not self.ik:
             return None
-        bcDict = {}
+        blends = []
         for i, jnt in enumerate(self.driverJoints):
             drivers = []
             if self.fk:
                 drivers.append(self.fkJoints[i])
             if self.ik:
                 drivers.append(self.ikJoints[i])
-            fkik = BlendColors(drivers=drivers, driven=jnt)
-            bcDict[jnt.name()] = fkik.blendColors
-        return bcDict
+            if mtrx:
+                blend = matrix.make_blend(drivers, jnt, decompose=True)
+            else:
+                blend = blend_colors.get_blend_colors(drivers, jnt)
+            blends.extend(blend)
+        return blends
 
     def get_chain(self, chain_type="FK"):
         if not self.check_chain_type(chain_type):

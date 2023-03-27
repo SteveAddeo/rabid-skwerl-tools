@@ -6,14 +6,13 @@ from core import utils
 
 def orient_joint(joint, aim_obj, up_obj=None, local=False, neg=False, mirror=False):
     """
-    
-    :param joint:
-    :param aim_obj:
-    :param up_obj:
-    :param local:
-    :param neg:
-    :param mirror:
-    :return:
+    Uses an aim constraint to orient a joint.
+    :param joint: joint to orient
+    :param aim_obj: object for joint to aim at
+    :param up_obj: object to orient the joint up to
+    :param local: if True, orient the joint in local space
+    :param neg: if True, orient the joint to the negative of the up vector
+    :param mirror: if True, orient the joint to the mirror of the aim vector
     """
     roo = str(joint.getRotationOrder())
     up = constants.get_axis_vector(roo[1].capitalize(), invert=mirror)
@@ -31,6 +30,15 @@ def orient_joint(joint, aim_obj, up_obj=None, local=False, neg=False, mirror=Fal
 
 
 def base_joint(joint, jnt_list, to_world=True, chain_to_world=False, neg=False, mirror=False):
+    """
+    Uses an aim constraint to orient the base joint in a chain
+    :param joint: joint to orient
+    :param jnt_list: list of joints to orient
+    :param to_world: if True, orient the joint in world space
+    :param chain_to_world: if True, orient all the joints in the chain in world space
+    :param neg: if True, orient the joint to the negative of the up vector
+    :param mirror: if True, orient the joint to the mirror of the aim vector
+    """
     if to_world:
         orient_joint(joint, jnt_list[1], neg=neg, mirror=mirror)
     if chain_to_world:
@@ -40,6 +48,15 @@ def base_joint(joint, jnt_list, to_world=True, chain_to_world=False, neg=False, 
 
 
 def mid_joints(joint, i, jnt_list, to_world=False, neg=False, mirror=False):
+    """
+    Uses an aim constraint to orient the mid joints in a chain
+    :param joint: joint to orient
+    :param i: index of the first joint in the chain
+    :param jnt_list: list of joints to orient
+    :param to_world: if True, orient the joint in world space
+    :param neg: if True, orient the joint to the negative of the up vector
+    :param mirror: if True, orient the joint to the mirror of the aim vector
+    """
     # Center Chains align to World Up
     if to_world:
         orient_joint(joint, jnt_list[i + 1], neg=neg, mirror=mirror)
@@ -49,6 +66,12 @@ def mid_joints(joint, i, jnt_list, to_world=False, neg=False, mirror=False):
 
 
 def tip_joint(joint, prev_jnt=None, to_joint=True):
+    """
+    Uses an aim constraint to orient the tip joint in a chain
+    :param joint: joint to orient
+    :param prev_jnt: previous joint in the chain
+    :param to_joint: if True, orient the joint to the rest of the chain
+    """
     if prev_jnt is None and pm.listRelatives(joint, p=1):
         pm.parent(joint, w=1)
     # Orient tip to World or local
@@ -62,6 +85,16 @@ def tip_joint(joint, prev_jnt=None, to_joint=True):
 
 def joints_in_chain(joints=None, orient_tip=True, group=None,
                     base_to_world=True, chain_to_world=False, neg=False, mirror=False):
+    """
+    Uses an aim constraint to orient all the joints in a chain
+    :param joints: list of joints to orient
+    :param orient_tip: if True, orient the tip joint to the rest of the chain
+    :param group: the group the chain is parented to
+    :param base_to_world: if True, orient the base joint in world space
+    :param chain_to_world: if True, orient the chain in world space
+    :param neg: if True, orient the joint to the negative of the up vector
+    :param mirror: if True, orient the joint to the mirror of the aim vector
+    """
     if joints is None:
         if not pm.ls(sl=1) or pm.ls(sl=1)[0].type() != "joint":
             pm.error("Joint not selected")
