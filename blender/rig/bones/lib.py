@@ -29,23 +29,23 @@ def duplicate_bone(edit_bones, orig_bone, new_name):
     return new_bone
 
 
-def get_unique_bone_name(base_name, suffix, edit_bones):
-    """Generates a unique bone name using a base name, suffix, and index.
+def get_bone_direction(armature_obj, bone_name):
+    """Returns the normalized direction vector from head to tail of the specified bone in world space.
 
     Args:
-        base_name (str): The base bone name.
-        suffix (str): Side suffix (e.g., '.L', '.C').
-        edit_bones (bpy.types.ArmatureEditBones): Collection to check for conflicts.
+        armature_obj (bpy.types.Object): The armature object containing the bone.
+        bone_name (str): The name of the bone.
 
     Returns:
-        str: A unique bone name.
+        Vector: Normalized direction vector in world space.
     """
-    i = 1
-    while True:
-        candidate = f"{base_name}.{i:03d}{suffix}"
-        if candidate not in edit_bones:
-            return candidate
-        i += 1
+    bone = armature_obj.pose.bones.get(bone_name)
+    if bone is None:
+        raise ValueError(f"Bone '{bone_name}' not found in armature '{armature_obj.name}'.")
+
+    head_world = armature_obj.matrix_world @ bone.head
+    tail_world = armature_obj.matrix_world @ bone.tail
+    return (tail_world - head_world).normalized()
 
 
 def get_bone_chain(chain_prefix, side, armature_obj):
@@ -65,17 +65,35 @@ def get_bone_chain(chain_prefix, side, armature_obj):
     return [b for _, b in sorted(chain)]
 
 
-def make_def_from_meta(armature_name, mta_bone_names, debug=False):
+def get_unique_bone_name(base_name, suffix, edit_bones):
+    """Generates a unique bone name using a base name, suffix, and index.
+
+    Args:
+        base_name (str): The base bone name.
+        suffix (str): Side suffix (e.g., '.L', '.C').
+        edit_bones (bpy.types.ArmatureEditBones): Collection to check for conflicts.
+
+    Returns:
+        str: A unique bone name.
+    """
+    i = 1
+    while True:
+        candidate = f"{base_name}.{i:03d}{suffix}"
+        if candidate not in edit_bones:
+            return candidate
+        i += 1
+
+
+def make_def_from_meta(armature_name: str, mta_bone_names: list[str], debug: bool = False) -> list[str]:
     """Creates DEF bones by duplicating the provided list of MTA bones.
 
     Args:
         armature_name (str): Name of the armature.
-        mta_bone_names (List[str]): List of MTA bone names to duplicate.
-        div (int, optional): Number of segments to subdivide each bone. Defaults to 2.
-        debug (bool): runs print statements for debugging
+        mta_bone_names (list[str]): List of MTA bone names.
+        debug (bool, optional): Whether to print debug logs. Defaults to False.
 
     Returns:
-        List[str]: List of newly created DEF bone names.
+        list[str]: List of newly created DEF bone names.
     """
     armature_obj = bpy.data.objects.get(armature_name)
     if not armature_obj:
@@ -89,6 +107,10 @@ def make_def_from_meta(armature_name, mta_bone_names, debug=False):
     with mode_utils.ensure_mode(armature_obj, 'EDIT'):
         armature_data = armature_obj.data
         edit_bones = armature_data.edit_bones
+
+        # 🛡️ First thing: sanitize edit bones BEFORE anything else
+        sanitize_bone_names(edit_bones, debug=debug)
+
         mta_to_def = {}
 
         for mta_name in mta_bone_names:
@@ -109,40 +131,47 @@ def make_def_from_meta(armature_name, mta_bone_names, debug=False):
                 def_bone.parent = mta_to_def[mta_bone.parent.name]
                 def_bone.use_connect = mta_bone.use_connect
 
-    # Sanitize and move to Deformer Bones collection
+    # After switching to OBJECT mode
     with mode_utils.ensure_mode(armature_obj, 'OBJECT'):
-        armature_data = armature_obj.data
-        safe_def_names = sanitize_bone_names(all_def_bones, debug)
-
         mta_col = armature_data.collections.get("Meta Bones")
         def_col = armature_data.collections.get("Deformer Bones")
         if not def_col:
             def_col = armature_data.collections.new(name="Deformer Bones")
+        safe_def_names = sanitize_bone_names(all_def_bones, debug=debug)
+        move_bones_to_collection(safe_def_names, armature_data, mta_col, def_col, debug)
 
-        move_bones_to_collection(safe_def_names, armature_data, mta_col, def_col)
     if debug:
-        print("✅ DEF bones successfully created.")
+        print(f"✅ DEF bones successfully created: {safe_def_names}")
+
     return safe_def_names
 
 
-def move_bones_to_collection(bone_names, armature_data, old_col, new_col, unassign_old=True):
-    """Moves bones from one collection to another.
+def move_bones_to_collection(bone_names, armature_data, old_col, new_col, unassign_old=True, debug=False):
+    """Moves bones to a new bone collection, safely handling bone name corrections.
 
     Args:
-        bone_names (List[str]): List of bone names to move.
+        bone_names (List[str]): List of valid bone names to move.
         armature_data (bpy.types.Armature): The armature data block.
         old_col (bpy.types.BoneCollection): Original bone collection.
         new_col (bpy.types.BoneCollection): Target bone collection.
-        unassign_old (bool, optional): Unassign from old collection. Defaults to True.
+        unassign_old (bool, optional): Whether to unassign from the old collection. Defaults to True.
     """
     with mode_utils.ensure_mode(bpy.context.object, 'OBJECT'):
         for bone_name in bone_names:
-            bone_data = armature_data.bones.get(bone_name)
-            if not bone_data:
+            bone = armature_data.bones.get(bone_name)
+            if not bone:
+                if debug:
+                    print(f"⚠️ Bone '{bone_name}' not found in armature '{armature_data.name}'. Skipping.")
                 continue
-            new_col.assign(bone_data)
-            if unassign_old and bone_data.name in old_col.bones:
-                old_col.unassign(bone_data)
+
+            new_col.assign(bone)
+
+            if unassign_old and old_col and bone.name in old_col.bones:
+                old_col.unassign(bone)
+        if debug:
+            print(f"✅ Moved {len(bone_names)} bones to collection '{new_col.name}'.")
+
+
 
 
 def sanitize_bone_names(bones, debug=False):
@@ -150,7 +179,7 @@ def sanitize_bone_names(bones, debug=False):
 
     Args:
         bones (Iterable[bpy.types.Bone or bpy.types.EditBone]): The bones to sanitize.
-        debug (bool): runs print statements for debugging
+        debug (bool, optional): If True, print debug messages.
 
     Returns:
         List[str]: A list of safe bone names after renaming (if needed).
@@ -159,21 +188,24 @@ def sanitize_bone_names(bones, debug=False):
     for i, bone in enumerate(bones):
         try:
             name = bone.name
-            name.encode('utf-8')  # test access and encoding
+            _ = name.encode('utf-8')  # Try accessing and encoding
             cleaned.append(name)
         except Exception:
+            # Fix broken names
             new_name = f"recovered_bone_{i:03d}"
             if debug:
                 print(f"⚠️ Invalid bone name detected — assigning: {new_name}")
             try:
                 bone.name = new_name
-            except Exception:
-                print(f"❌ Failed to rename bone index {i}")
+            except Exception as e:
+                if debug:
+                    print(f"❌ Failed to rename bone index {i}: {e}")
             cleaned.append(new_name)
     return cleaned
 
 
-def subdivide_bone(edit_bones, bone_name, segments, connect_chain=True, debug=False):
+
+def subdivide_bone(edit_bones, bone_name, segments, connect_chain=True):
     """Subdivides a bone into multiple segments.
 
     Args:
@@ -183,7 +215,7 @@ def subdivide_bone(edit_bones, bone_name, segments, connect_chain=True, debug=Fa
         connect_chain (bool, optional): Whether to connect segments. Defaults to True.
 
     Returns:
-        List[bpy.types.EditBone]: List of newly created segment bones.
+        List[str]: List of newly created segment bone names.
     """
     orig_bone = edit_bones.get(bone_name)
     if not orig_bone:
@@ -196,9 +228,15 @@ def subdivide_bone(edit_bones, bone_name, segments, connect_chain=True, debug=Fa
     children = [b for b in edit_bones if b.parent == orig_bone]
     direction = (tail - head) / segments
 
-    match = re.match(r"(.*?)(\.[A-Z])?$", bone_name)
-    base_name = match.group(1)
-    suffix = match.group(2) if match.group(2) else ""
+    # Properly split the side from the name
+    # Find LAST period
+    last_dot = bone_name.rfind('.')
+    if last_dot != -1:
+        base_name = bone_name[:last_dot]
+        side_suffix = bone_name[last_dot:]  # includes the dot
+    else:
+        base_name = bone_name
+        side_suffix = ""
 
     edit_bones.remove(orig_bone)
 
@@ -208,7 +246,14 @@ def subdivide_bone(edit_bones, bone_name, segments, connect_chain=True, debug=Fa
         seg_head = head + direction * i
         seg_tail = head + direction * (i + 1)
 
-        new_name = get_unique_bone_name(base_name, suffix, edit_bones)
+        new_name = f"{base_name}.{i+1:03d}{side_suffix}"
+        if new_name in edit_bones:
+            # Ensure unique (rare)
+            counter = 1
+            while f"{new_name}.{counter}" in edit_bones:
+                counter += 1
+            new_name = f"{new_name}.{counter}"
+
         new_bone = edit_bones.new(new_name)
         new_bone.head = seg_head
         new_bone.tail = seg_tail
@@ -228,7 +273,7 @@ def subdivide_bone(edit_bones, bone_name, segments, connect_chain=True, debug=Fa
         child.parent = new_bones[-1]
         child.use_connect = False
 
-    return sanitize_bone_names(new_bones, debug)
+    return sanitize_bone_names(new_bones)
 
 
 def subdivide_bones(armature_name, bone_names, segments=2, debug=False):

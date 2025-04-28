@@ -1,9 +1,12 @@
 import re
 import bpy
+from math import degrees
+from mathutils import Vector
 from ...utils import mode_utils
 from ..bones import lib as bones_lib
 
-def add_hook_modifiers(curve_obj, armature_obj, hook_bone_names, debug=False):
+# TODO: build_bezier_curve() needs the curve handles to align with the child bones
+def add_hooks_to_curve(curve_obj, armature_obj, bone_names, debug=False):
     """Adds hook modifiers to a curve for the given bone names.
 
     Args:
@@ -15,6 +18,7 @@ def add_hook_modifiers(curve_obj, armature_obj, hook_bone_names, debug=False):
     Returns:
         bpy.types.HookModifier: The last hook modifier added.
     """
+    hook_bone_names = [b.name for b in get_hook_bones(bone_names, armature_obj) if b]
     with mode_utils.ensure_mode(curve_obj, 'OBJECT'):
         for bone in hook_bone_names:
             bpy.ops.object.modifier_add(type='HOOK')
@@ -23,21 +27,17 @@ def add_hook_modifiers(curve_obj, armature_obj, hook_bone_names, debug=False):
             hook.object = armature_obj
             hook.subtarget = bone
 
-        for b in armature_obj.data.bones:
-            try:
-                b.name.encode('utf-8')
-            except UnicodeEncodeError:
-                b.name = "fixme_broken"
+        safe_hook_bone_names = bones_lib.sanitize_bone_names(hook_bone_names, debug)
 
         if debug:
-            print(f"Hook Bones: {hook_bone_names}")
+            print(f"Hook Bones: {safe_hook_bone_names}")
 
-        assign_curve_to_hooks(curve_obj, hook_bone_names, debug)
+        assign_points_to_hooks(curve_obj, safe_hook_bone_names, debug)
 
     return curve_obj.modifiers[-1]
 
 
-def assign_curve_to_hooks(curve_obj, bones, debug=False):
+def assign_points_to_hooks(curve_obj, bones, debug=False):
     """Assigns each curve point to its corresponding hook modifier.
 
     Args:
@@ -96,20 +96,8 @@ def assign_point_to_hook(curve_obj, point_index, hook_name, debug=False):
         print(f"❌ Failed to assign point {point_index} to {hook_name}: {e}")
 
 
-def build_bezier_curve(curve_name, obj_name, points, child_dir=None, handle_len=0.5, debug=False):
-    """Builds and returns a Bezier curve object from a list of points.
-
-    Args:
-        curve_name (str): Name for the curve data-block.
-        obj_name (str): Name for the curve object.
-        points (List[Vector]): World-space points defining the curve.
-        child_dir (Vector, optional): Direction for the last handle. Defaults to None.
-        handle_len (float, optional): Length of handle vectors. Defaults to 0.5.
-        debug (bool, optional): If True, prints debug info. Defaults to False.
-
-    Returns:
-        bpy.types.Object: The newly created curve object.
-    """
+def build_bezier_curve(curve_name, obj_name, points, bone_dirs, handle_len=0.5, debug=False):
+    """Builds and returns a Bezier curve object from a list of points and bone directions with adaptive smoothing."""
     curve_data = bpy.data.curves.new(name=curve_name, type='CURVE')
     curve_data.dimensions = '3D'
     spline = curve_data.splines.new(type='BEZIER')
@@ -121,23 +109,52 @@ def build_bezier_curve(curve_name, obj_name, points, child_dir=None, handle_len=
         pt.handle_left_type = pt.handle_right_type = 'FREE'
         pt.select_control_point = True
 
-    if len(points) == 2:
-        p0, p1 = spline.bezier_points[0], spline.bezier_points[1]
-        vec = (p1.co - p0.co) / 3
-        p0.handle_right, p0.handle_left = p0.co + vec, p0.co - vec
-        p1.handle_left, p1.handle_right = p1.co - vec, p1.co + vec
-    else:
-        for i, pt in enumerate(spline.bezier_points):
-            dir = (points[min(i + 1, len(points) - 1)] - points[max(i - 1, 0)]).normalized()
-            pt.handle_right = pt.co + dir * handle_len
-            pt.handle_left = pt.co - dir * handle_len
+        if i < len(bone_dirs):
+            dir = bone_dirs[i]
+
+            # Smoothing boost: adapt handle_len based on curvature
+            handle_scale = 1.0
+            if 0 < i < len(bone_dirs) - 1:
+                # Compare previous and next directions
+                prev_dir = bone_dirs[i-1]
+                next_dir = bone_dirs[i+1]
+
+                angle = prev_dir.angle(next_dir)
+                angle_deg = degrees(angle)
+
+                if debug:
+                    print(f"🔍 Point {i}: Angle between prev/next = {angle_deg:.2f}°")
+
+                # Less than 30 degrees = very straight → long handles
+                # 90 degrees = medium handles
+                # More than 150 degrees = sharp bend → short handles
+                if angle_deg < 30:
+                    handle_scale = 1.5
+                elif angle_deg > 150:
+                    handle_scale = 0.4
+                else:
+                    handle_scale = 1.0
+
+            pt.handle_right = pt.co + dir * handle_len * handle_scale
+            pt.handle_left = pt.co - dir * handle_len * handle_scale
+        else:
+            # fallback for final point
+            if i > 0:
+                fallback_dir = (points[i] - points[i-1]).normalized()
+                pt.handle_right = pt.co + fallback_dir * handle_len
+                pt.handle_left = pt.co - fallback_dir * handle_len
+            else:
+                pt.handle_right = pt.co + Vector((handle_len, 0, 0))
+                pt.handle_left = pt.co - Vector((handle_len, 0, 0))
 
     curve_obj = bpy.data.objects.new(obj_name, curve_data)
     bpy.context.collection.objects.link(curve_obj)
 
     if debug:
-        print(f"Created curve '{obj_name}' with {len(points)} points.")
+        print(f"✅ Created smoothed curve '{obj_name}' with {len(points)} points.")
+
     return curve_obj
+
 
 
 def get_curve_points_from_bones(bones, armature_obj):
@@ -173,14 +190,97 @@ def get_hook_bones(bone_names, armature_obj):
 
 
 def make_spline_curve(bone_name, armature_obj, debug=False):
-    """Creates a spline curve and hooks it to a bone chain.
+    """Creates a spline curve based on a bone chain starting from a given meta bone.
+
+    Args:
+        bone_name (str): Base meta bone name to start the chain from.
+        armature_obj (bpy.types.Object): The armature object containing the bones.
+        debug (bool, optional): Whether to print debug info.
+
+    Returns:
+        bpy.types.Object: The newly created curve object.
+    """
+    with mode_utils.ensure_mode(armature_obj, 'EDIT'):
+        multi = re.match(r"(MTA-[\w]+)\.(\d+)\.(c|l|r)$", bone_name, re.IGNORECASE)
+        if multi:
+            prefix, _, side = multi.groups()
+            bones = bones_lib.get_bone_chain(prefix, side, armature_obj)
+            base_name = prefix.replace("MTA-", "")
+        else:
+            bone = armature_obj.data.edit_bones.get(bone_name)
+            if not bone:
+                raise ValueError(f"⚠️ Bone '{bone_name}' not found.")
+            bones = [bone]
+            base_name = re.sub(r"(?:.*-)?([\w]+?)(?:\.\d+)?\.(?:c|l|r)$", r"\1", bone_name)
+
+        if debug:
+            print(f"🔍 Found {len(bones)} bones for spline: {[b.name for b in bones]}")
+
+        if not bones:
+            raise ValueError(f"No bones found for '{bone_name}'.")
+
+        # Sanitize and get names
+        bone_names = bones_lib.sanitize_bone_names(bones, debug=debug)
+
+    # 🛠 Re-fetch pose bones now in OBJECT mode
+    with mode_utils.ensure_mode(armature_obj, 'OBJECT'):
+        pose_bones = armature_obj.pose.bones
+        points = []
+        bone_dirs = []
+
+        for bone_name in bone_names:
+            pose_bone = pose_bones.get(bone_name)
+            if not pose_bone:
+                raise ValueError(f"Pose bone '{bone_name}' not found.")
+
+            head_world = armature_obj.matrix_world @ pose_bone.head
+            tail_world = armature_obj.matrix_world @ pose_bone.tail
+
+            points.append(head_world)
+            bone_dirs.append((tail_world - head_world).normalized())
+
+        # Add final tail point
+        if pose_bone:
+            points.append(armature_obj.matrix_world @ pose_bone.tail)
+
+        # Calculate final direction
+        last_pose_bone = pose_bone
+        final_dir = None
+        if last_pose_bone.children:
+            child_bone = last_pose_bone.children[0]
+            final_dir = (armature_obj.matrix_world @ child_bone.tail - armature_obj.matrix_world @ last_pose_bone.tail).normalized()
+        else:
+            # Fallback: use last two points
+            final_dir = (points[-1] - points[-2]).normalized()
+
+        bone_dirs.append(final_dir)
+
+    # 🛠 Now build the Bezier curve
+    curve_obj = build_bezier_curve(
+        curve_name=f"{base_name}.crv",
+        obj_name=f"{base_name}.spln",
+        points=points,
+        bone_dirs=bone_dirs,
+        handle_len=0.5,
+        debug=debug
+    )
+
+    if debug:
+        print(f"✅ Built spline curve '{curve_obj.name}' with {len(points)} points.")
+
+    return curve_obj
+
+
+
+"""def make_spline_curve(bone_name, armature_obj, debug=False):"""
+"""Creates a spline curve and hooks it to a bone chain.
 
     Args:
         bone_name (str): Name of the bone (or first in chain).
         armature_obj (bpy.types.Object): Armature with bones.
         debug (bool, optional): If True, prints debug info. Defaults to False.
     """
-    with mode_utils.ensure_mode(armature_obj, 'EDIT'):
+"""with mode_utils.ensure_mode(armature_obj, 'EDIT'):
         multi = re.match(r"(MTA-[\w]+)\.(\d+)\.(c|l|r)$", bone_name, re.IGNORECASE)
         if multi:
             prefix, _, side = multi.groups()
@@ -202,7 +302,7 @@ def make_spline_curve(bone_name, armature_obj, debug=False):
     bone_names = [b.name for b in bones]
     hook_names = [b.name for b in get_hook_bones(bone_names, armature_obj) if b]
 
-    add_hook_modifiers(curve_obj, armature_obj, hook_names, debug)
+    add_hook_modifiers(curve_obj, armature_obj, hook_names, debug)"""
 
 
 # make_spline_curve("MTA-neck.01.c", bpy.data.objects["Armature"], True)
