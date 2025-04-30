@@ -1,5 +1,7 @@
 import re
 import bpy
+from mathutils import Vector
+from ..curves import lib as curves_lib
 from ...utils import mode_utils
 
 
@@ -204,7 +206,6 @@ def sanitize_bone_names(bones, debug=False):
     return cleaned
 
 
-
 def subdivide_bone(edit_bones, bone_name, segments, connect_chain=True):
     """Subdivides a bone into multiple segments.
 
@@ -276,8 +277,126 @@ def subdivide_bone(edit_bones, bone_name, segments, connect_chain=True):
     return sanitize_bone_names(new_bones)
 
 
-def subdivide_bones(armature_name, bone_names, segments=2, debug=False):
-    """Subdivides a list of bones into multiple segments.
+def subdivide_bone_to_curve(edit_bones, orig_bone, segment_points, segments=2, follow_curve_roll=False):
+    """Subdivides a bone into multiple connected segments aligned to a curve, optionally aligning roll to the curve tangent.
+
+    Args:
+        edit_bones (bpy.types.ArmatureEditBones): Edit bones collection.
+        orig_bone (bpy.types.EditBone): Original bone to subdivide.
+        segment_points (List[Vector]): List of `segments + 1` points along a curve span.
+        segments (int): Number of segments to create.
+        follow_curve_roll (bool): Whether to align bone roll with the curve's direction.
+
+    Returns:
+        List[str]: Names of the new subdivided bones.
+    """
+    if len(segment_points) != segments + 1:
+        raise ValueError(f"Expected {segments + 1} segment points, got {len(segment_points)}")
+
+    # Cache everything we need BEFORE removing the original bone
+    roll = orig_bone.roll
+    parent = orig_bone.parent
+    children = [b for b in edit_bones if b.parent == orig_bone]
+
+    match = re.match(r"^(.*?)(\.\d+)?\.(c|l|r)$", orig_bone.name)
+    if not match:
+        raise ValueError(f"Bone name '{orig_bone.name}' does not match naming convention")
+    base, segment_id, side = match.groups()
+    base_name = base + (segment_id or "")
+    suffix = f".{side}"
+
+    # Now we can safely remove the original bone
+    edit_bones.remove(orig_bone)
+
+    new_bones = []
+    prev_bone = None
+
+    for i in range(segments):
+        head = segment_points[i]
+        tail = segment_points[i + 1]
+        new_name = f"{base_name}.{i+1:03d}{suffix}"
+
+        b = edit_bones.new(new_name)
+        b.head = head
+        b.tail = tail
+        b.parent = prev_bone or parent
+        b.use_connect = prev_bone is not None
+
+        if follow_curve_roll:
+            # Align Z axis (up) using a consistent up vector
+            direction = (tail - head).normalized()
+            up = Vector((0, 0, 1))
+            if abs(direction.dot(up)) > 0.99:  # Avoid gimbal locking if nearly vertical
+                up = Vector((0, 1, 0))
+            quat = direction.to_track_quat('Y', 'Z')  # Y = bone axis
+            b.roll = quat.to_euler().z
+        else:
+            b.roll = roll  # Default roll from the original bone
+
+        new_bones.append(b)
+        prev_bone = b
+
+    # Reassign children to the last new bone
+    for child in children:
+        child.parent = new_bones[-1]
+        child.use_connect = False
+
+    return sanitize_bone_names(new_bones)
+
+
+def subdivide_bones(armature_name, bone_names, segments=2, curve_obj=None, debug=False):
+    """Subdivides bones into segments, optionally aligning to spans of a curve.
+
+    Args:
+        armature_name (str): Name of the armature.
+        bone_names (list[str]): Names of bones to subdivide.
+        segments (int): Number of subdivisions per bone.
+        curve_obj (bpy.types.Object, optional): If provided, align bones to spans of curve.
+        debug (bool): If True, print debug info.
+
+    Returns:
+        list[str]: List of new subdivided bone names.
+    """
+    armature_obj = bpy.data.objects.get(armature_name)
+    if not armature_obj or armature_obj.type != 'ARMATURE':
+        raise ValueError(f"Invalid armature: {armature_name}")
+
+    new_bone_names = []
+
+    with mode_utils.ensure_mode(armature_obj, 'EDIT'):
+        edit_bones = armature_obj.data.edit_bones
+
+        total_spans = len(bone_names)
+
+        for i, bone_name in enumerate(bone_names):
+            if bone_name not in edit_bones:
+                if debug:
+                    print(f"⚠️ Cannot subdivide: '{bone_name}' not found.")
+                continue
+
+            orig_bone = edit_bones[bone_name]
+
+            if curve_obj:
+                # Normalized start and end ratio for this bone's span along the curve
+                start_ratio = i / total_spans
+                end_ratio = (i + 1) / total_spans
+                segment_points = curves_lib.sample_curve_segment_points(curve_obj, start_ratio, end_ratio, segments)
+                new_names = subdivide_bone_to_curve(edit_bones, orig_bone, segment_points, segments, follow_curve_roll=False)
+            else:
+                new_names = subdivide_bone(edit_bones, bone_name, segments)
+
+            new_bone_names.extend(new_names)
+    if debug:
+        print(f"✅ Subdivided {len(bone_names)} bones into {len(new_bone_names)} new bones.")
+    return new_bone_names
+
+
+
+
+
+
+"""def subdivide_bones(armature_name, bone_names, segments=2, debug=False):"""
+"""Subdivides a list of bones into multiple segments.
 
     Args:
         armature_name (str): Name of the armature.
@@ -288,7 +407,7 @@ def subdivide_bones(armature_name, bone_names, segments=2, debug=False):
     Returns:
         list[str]: List of all newly created segment bone names.
     """
-    armature_obj = bpy.data.objects.get(armature_name)
+"""armature_obj = bpy.data.objects.get(armature_name)
     if not armature_obj or armature_obj.type != 'ARMATURE':
         raise ValueError(f"Invalid armature: {armature_name}")
 
@@ -306,7 +425,7 @@ def subdivide_bones(armature_name, bone_names, segments=2, debug=False):
             segments_created = subdivide_bone(edit_bones, bone_name, segments)
             new_bone_names.extend(segments_created)
 
-    return new_bone_names
+    return new_bone_names"""
 
 
 # armature = bpy.data.objects['Armature']

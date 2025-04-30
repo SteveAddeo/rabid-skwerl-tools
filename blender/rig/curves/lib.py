@@ -271,6 +271,113 @@ def make_spline_curve(bone_name, armature_obj, debug=False):
     return curve_obj
 
 
+def sample_curve_segment_points(curve_obj, start_ratio, end_ratio, segments):
+    """Samples `segments + 1` evenly spaced points between start_ratio and end_ratio of the curve's arc length.
+
+    Args:
+        curve_obj (bpy.types.Object): Curve to sample from.
+        start_ratio (float): Start of the segment (0.0 - 1.0).
+        end_ratio (float): End of the segment (0.0 - 1.0).
+        segments (int): Number of segments to sample.
+
+    Returns:
+        List[Vector]: World-space sampled points.
+    """
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    eval_obj = curve_obj.evaluated_get(depsgraph)
+    mesh = eval_obj.to_mesh()
+
+    verts = [v.co.copy() for v in mesh.vertices]
+    if len(verts) < 2:
+        raise ValueError("Curve mesh does not have enough vertices to sample.")
+
+    # Build cumulative arc lengths
+    arc_lengths = [0.0]
+    for i in range(1, len(verts)):
+        arc_lengths.append(arc_lengths[-1] + (verts[i] - verts[i - 1]).length)
+
+    total_length = arc_lengths[-1]
+    start_dist = start_ratio * total_length
+    end_dist = end_ratio * total_length
+
+    result = []
+    t = 0
+    for s in range(segments + 1):
+        target_dist = start_dist + (end_dist - start_dist) * (s / segments)
+        # Find appropriate segment
+        while t < len(arc_lengths) - 1 and arc_lengths[t + 1] < target_dist:
+            t += 1
+        if t >= len(verts) - 1:
+            result.append(curve_obj.matrix_world @ verts[-1])
+            continue
+        d1 = arc_lengths[t]
+        d2 = arc_lengths[t + 1]
+        factor = (target_dist - d1) / (d2 - d1) if d2 > d1 else 0
+        point = verts[t].lerp(verts[t + 1], factor)
+        result.append(curve_obj.matrix_world @ point)
+
+    eval_obj.to_mesh_clear()
+    return result
+
+
+def sample_points_on_curve(curve_obj, num_points):
+    """Samples `num_points` evenly spaced world-space positions along the curve's length.
+
+    Args:
+        curve_obj (bpy.types.Object): Curve object to sample from.
+        num_points (int): Number of evenly spaced points to return.
+
+    Returns:
+        list[Vector]: World-space coordinates.
+    """
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    eval_obj = curve_obj.evaluated_get(depsgraph)
+    mesh = eval_obj.to_mesh()
+
+    if not mesh or not mesh.vertices:
+        raise ValueError("Could not evaluate curve geometry.")
+
+    # Sample evenly along the vertex path of the curve mesh
+    verts = [v.co for v in mesh.vertices]
+    total_length = sum((verts[i] - verts[i - 1]).length for i in range(1, len(verts)))
+
+    if total_length == 0 or len(verts) < 2:
+        raise ValueError("Invalid curve mesh: insufficient geometry or zero length.")
+
+    # Create a list of cumulative lengths
+    distances = [0.0]
+    for i in range(1, len(verts)):
+        distances.append(distances[-1] + (verts[i] - verts[i - 1]).length)
+
+    # Compute evenly spaced distance intervals
+    step = total_length / (num_points - 1)
+    result = []
+    target_dist = 0.0
+    j = 1
+
+    for _ in range(num_points):
+        while j < len(distances) and distances[j] < target_dist:
+            j += 1
+
+        if j >= len(verts):
+            result.append(curve_obj.matrix_world @ verts[-1])
+            continue
+
+        # Interpolate between verts[j - 1] and verts[j]
+        d1 = distances[j - 1]
+        d2 = distances[j]
+        factor = (target_dist - d1) / (d2 - d1) if d2 > d1 else 0.0
+        point = verts[j - 1].lerp(verts[j], factor)
+        world_point = curve_obj.matrix_world @ point
+        result.append(world_point)
+
+        target_dist += step
+
+    eval_obj.to_mesh_clear()
+    return result
+
+
+
 
 """def make_spline_curve(bone_name, armature_obj, debug=False):"""
 """Creates a spline curve and hooks it to a bone chain.

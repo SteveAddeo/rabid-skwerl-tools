@@ -56,6 +56,7 @@ class Rig:
         self.mta_bones: list[str]  = []
         self.def_bones: list[str]  = []
         self.subdiv_bones: list[str]  = []
+        self.spline_crv = None
         self.debug: bool = debug
     
     def build(self):
@@ -64,7 +65,8 @@ class Rig:
         sanitize_armature(self.armature_obj, debug=self.debug)
         self._build_def_bones()
         self._batch_autoclean_collections()
-        print(f"Deformer bones for {self.meta_prefix}: {self.def_bones}")
+        if self.debug:
+            print(f"Deformer bones for {self.meta_prefix}: {self.def_bones}")
     
     def _autoclean_bone_collections(self, prefix, collection):
         """Ensures bones with a prefix only exist in the expected bone collection.
@@ -120,11 +122,11 @@ class Rig:
         
     def _build_def_bones(self):
         """Internal method to generate DEF bones from MTA bones and apply subdivisions."""
-       # Step 1: Create DEF bones from MTA
+        # Step 1: Create DEF bones from MTA
         def_bone_names = bones_lib.make_def_from_meta(self.armature_name, self.mta_bones, debug=self.debug)
         # Step 2: Subdivide any requested DEF bones
         if self.subdiv_bones:
-            subdivided = bones_lib.subdivide_bones(self.armature_name, self.subdiv_bones, self.segments, debug=self.debug)
+            subdivided = bones_lib.subdivide_bones(self.armature_name, self.subdiv_bones, self.segments, self.spline_crv, debug=self.debug)
             # Remove only the bones that were subdivided, not others
             for orig in self.subdiv_bones:
                 if orig in def_bone_names:
@@ -133,9 +135,8 @@ class Rig:
         # Step 3: Clean recovered bones ONLY
         final_bones = [name for name in def_bone_names if not name.startswith("recovered_bone_")]
         # Step 4: Assign bones to Deformer Bone collection
-        self._finalize_bones("DEF-", "Deformer Bones")
-        root_bone = self._get_root_bone(final_bones)
-        self.def_bones = self._sort_bone_chain(root_bone, final_bones)
+        self._finalize_bones("DEF-", "Deformer Bones", final_bones)
+        # Debug
         if self.debug:
             print(f"✅ DEF bones created from MTA bones: {self.def_bones}")
 
@@ -147,9 +148,9 @@ class Rig:
         """
         if not self.armature_obj:
             raise RuntimeError("Armature not initialized.")
-        self.spline_curve = curves_lib.make_spline_curve(source_bone_name, self.armature_obj, debug=self.debug)
+        self.spline_crv = curves_lib.make_spline_curve(source_bone_name, self.armature_obj, debug=self.debug)
     
-    def _finalize_bones(self, prefix, collection):
+    def _finalize_bones(self, prefix, collection, bone_names=None):
         """Moves bones with a given prefix into a specified bone collection and updates the internal list.
 
         Args:
@@ -164,14 +165,22 @@ class Rig:
             if not bone_col:
                 bone_col = self.armature_data.collections.new(name=collection)
             # Get all matching bones
-            matching_bones = self._get_bones_by_type(bone_type=prefix.rstrip("-"))
+            matching_bones = bone_names or self._get_bones_by_type(bone_type=prefix.rstrip("-"))
             for bone_name in matching_bones:
                 bone_data = self.armature_data.bones.get(bone_name)
                 if bone_data:
                     bone_col.assign(bone_data)
+            if prefix == "DEF-":  # Don't overwrite — just ensure complete + ordered
+                try:
+                    root = self._get_root_bone(matching_bones)
+                    self.def_bones = self._sort_bone_chain(root, matching_bones)
+                except Exception as e:
+                    print(f"⚠️ Could not sort DEF bones for '{self.meta_prefix}': {e}")
+                    self.def_bones = matching_bones
             # Debug
             if self.debug:
                 print(f"✅ Finalized {len(matching_bones)} '{prefix}' bones into '{collection}'.")
+
     
     def _get_armature(self):
         """Internal method to set `self.armature_obj` and `self.armature_data` from armature_name.
@@ -224,10 +233,9 @@ class Rig:
             if not bone.parent or bone.parent.name not in candidate_set:
                 return name
         raise ValueError("Root bone not found in candidates.")
-
     
     def _sort_bone_chain(self, root_bone_name, candidates):
-        """Sorts bones following parenting from a root.
+        """Sorts bones following parenting from a root, ensuring proper hierarchy.
 
         Args:
             root_bone_name (str): Name of starting parent bone.
@@ -236,19 +244,23 @@ class Rig:
         Returns:
             list[str]: Bones sorted in parent → child order.
         """
+        armature_data = self.armature_obj.data
         chain = []
         current = root_bone_name
         while current:
             chain.append(current)
             next_bone = None
             for bname in candidates:
-                bone = self.armature_obj.data.bones.get(bname)
+                bone = armature_data.bones.get(bname)
                 if bone and bone.parent and bone.parent.name == current:
                     next_bone = bname
                     break
             current = next_bone
-        return chain
+        # If there are still remaining candidates that aren't added to the chain
+        remaining_bones = [bone for bone in candidates if bone not in chain]
+        chain.extend(remaining_bones)
 
+        return chain
 
 
 class NeckRig(Rig):
@@ -268,8 +280,8 @@ class NeckRig(Rig):
         self._get_armature()
         self.mta_bones = self._get_bones_by_type('MTA')
         self.subdiv_bones = [name.replace("MTA-", "DEF-") for name in self.mta_bones]
-        super().build()
         self._build_curve(source_bone_name=self.mta_bones[0])
+        super().build()
 
 
 class SpineRig(Rig):
