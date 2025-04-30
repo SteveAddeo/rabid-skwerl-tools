@@ -5,6 +5,27 @@ from ..curves import lib as curves_lib
 from ...utils import mode_utils
 
 
+def create_root(armature_obj, name):
+    """Creates a root bone at the origin with no parent and use_deform=False.
+
+    Args:
+        armature_obj (bpy.types.Object): The armature object.
+        name (str): Name of the root bone to create.
+
+    Returns:
+        bpy.types.EditBone: The created root bone.
+    """
+    with mode_utils.ensure_mode(armature_obj, 'EDIT'):
+        edit_bones = armature_obj.data.edit_bones
+        if name in edit_bones:
+            return edit_bones[name]
+        root = edit_bones.new(name)
+        root.head = Vector((0, 0, 0))
+        root.tail = Vector((0, 1, 0))
+        root.use_connect = False
+        return root
+    
+
 def duplicate_bone(edit_bones, orig_bone, new_name):
     """Duplicates an EditBone with a new name.
 
@@ -29,6 +50,66 @@ def duplicate_bone(edit_bones, orig_bone, new_name):
     new_bone.roll = roll
     new_bone.use_connect = False
     return new_bone
+
+
+def duplicate_bones(armature_name, bone_names, source_prefix, target_prefix, debug=False):
+    """Duplicates a list of bones with a new prefix (e.g., from DEF- to TGT-).
+
+    Args:
+        armature_name (str): Name of the armature object.
+        bone_names (list[str]): List of bone names to duplicate.
+        source_prefix (str): Prefix to replace in source bone names.
+        target_prefix (str): Prefix to use for duplicated bones.
+        debug (bool): Print debug information.
+
+    Returns:
+        list[str]: List of new duplicated bone names.
+    """
+    armature_obj = bpy.data.objects.get(armature_name)
+    if not armature_obj:
+        raise ValueError(f"Armature '{armature_name}' not found.")
+
+    new_bone_names = []
+
+    with mode_utils.ensure_mode(armature_obj, 'EDIT'):
+        edit_bones = armature_obj.data.edit_bones
+
+        for old_name in bone_names:
+            orig_bone = edit_bones.get(old_name)
+            if not orig_bone:
+                if debug:
+                    print(f"⚠️ Bone not found: {old_name}")
+                continue
+
+            new_name = old_name.replace(source_prefix, target_prefix, 1)
+            new_bone = duplicate_bone(edit_bones, orig_bone, new_name)
+            new_bone_names.append(new_name)
+
+    return new_bone_names
+
+
+def get_armature_obj(armature_name_or_obj='Armature'):
+    """Returns the armature object from name or passes through if already an object.
+
+    Args:
+        armature_name_or_obj (str or bpy.types.Object): Armature name or object.
+
+    Returns:
+        bpy.types.Object: Armature object.
+
+    Raises:
+        ValueError: If the armature cannot be found or is the wrong type.
+    """
+    if isinstance(armature_name_or_obj, bpy.types.Object):
+        if armature_name_or_obj.type != 'ARMATURE':
+            raise ValueError(f"Provided object is not an armature.")
+        return armature_name_or_obj
+    armature_obj = bpy.data.objects.get(armature_name_or_obj)
+    if not armature_obj:
+        raise ValueError(f"Armature '{armature_name_or_obj}' not found.")
+    if armature_obj.type != 'ARMATURE':
+        raise ValueError(f"Object '{armature_name_or_obj}' is not an armature.")
+    return armature_obj
 
 
 def get_bone_direction(armature_obj, bone_name):
@@ -97,12 +178,7 @@ def make_def_from_meta(armature_name: str, mta_bone_names: list[str], debug: boo
     Returns:
         list[str]: List of newly created DEF bone names.
     """
-    armature_obj = bpy.data.objects.get(armature_name)
-    if not armature_obj:
-        raise ValueError(f"Armature '{armature_name}' not found.")
-    if armature_obj.type != 'ARMATURE':
-        raise ValueError(f"Object '{armature_name}' is not an armature.")
-
+    armature_obj = get_armature_obj(armature_name)
     bpy.context.view_layer.objects.active = armature_obj
     all_def_bones = []
 
@@ -148,6 +224,29 @@ def make_def_from_meta(armature_name: str, mta_bone_names: list[str], debug: boo
     return safe_def_names
 
 
+def match_bone_hierarchy(armature_name, source_bones, target_bones):
+    """Matches parenting of target bones to match their source counterparts.
+
+    Args:
+        armature_obj (bpy.types.Object): The armature object.
+        source_bones (list[str]): List of source bone names.
+        target_bones (list[str]): List of corresponding target bone names.
+    """
+    armature_obj = get_armature_obj(armature_name)
+    bone_map = dict(zip(source_bones, target_bones))
+    with mode_utils.ensure_mode(armature_obj, 'EDIT'):
+        edit_bones = armature_obj.data.edit_bones
+        for src, tgt in bone_map.items():
+            src_bone = edit_bones.get(src)
+            tgt_bone = edit_bones.get(tgt)
+            if src_bone and tgt_bone and src_bone.parent:
+                src_parent = src_bone.parent.name
+                tgt_parent = bone_map.get(src_parent)
+                if tgt_parent and tgt_parent in edit_bones:
+                    tgt_bone.parent = edit_bones[tgt_parent]
+                    tgt_bone.use_connect = False
+
+
 def move_bones_to_collection(bone_names, armature_data, old_col, new_col, unassign_old=True, debug=False):
     """Moves bones to a new bone collection, safely handling bone name corrections.
 
@@ -174,7 +273,30 @@ def move_bones_to_collection(bone_names, armature_data, old_col, new_col, unassi
             print(f"✅ Moved {len(bone_names)} bones to collection '{new_col.name}'.")
 
 
+def reparent_with_offset(armature_obj, parent_name, child_names):
+    """Reparents edit bones under a new parent using Blender's operator with 'OFFSET'.
 
+    Args:
+        armature_obj (bpy.types.Object): The armature object.
+        parent_name (str): Name of the new parent bone.
+        child_names (list[str]): Names of child bones to reparent.
+    """
+    bpy.context.view_layer.objects.active = armature_obj
+    with mode_utils.ensure_mode(armature_obj, 'EDIT'):
+        for bone in armature_obj.data.edit_bones:
+            bone.select = False
+
+        for name in child_names:
+            bone = armature_obj.data.edit_bones.get(name)
+            if bone:
+                bone.select = True
+
+        parent_bone = armature_obj.data.edit_bones.get(parent_name)
+        if parent_bone:
+            parent_bone.select = True
+            armature_obj.data.edit_bones.active = parent_bone
+
+        bpy.ops.armature.parent_set(type='OFFSET')
 
 def sanitize_bone_names(bones, debug=False):
     """Ensures bone names are valid UTF-8; renames if necessary.

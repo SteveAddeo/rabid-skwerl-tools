@@ -3,6 +3,7 @@ import bpy
 from ...utils import mode_utils
 from ..bones import lib as bones_lib
 from ..curves import lib as curves_lib
+from ..constraints import lib as constraints_lib
 
 
 def sanitize_armature(armature_obj: bpy.types.Object, debug: bool = False):
@@ -56,6 +57,7 @@ class Rig:
         self.mta_bones: list[str]  = []
         self.def_bones: list[str]  = []
         self.subdiv_bones: list[str]  = []
+        self.tgt_bones: list[str] = []
         self.spline_crv = None
         self.debug: bool = debug
     
@@ -64,40 +66,53 @@ class Rig:
         self._get_armature()
         sanitize_armature(self.armature_obj, debug=self.debug)
         self._build_def_bones()
-        self._batch_autoclean_collections()
         if self.debug:
             print(f"Deformer bones for {self.meta_prefix}: {self.def_bones}")
+        self._build_tgt_bones()
+        if self.debug:
+            print(f"Target bones for {self.meta_prefix}: {self.tgt_bones}")
+        self._make_def_root()
+        self._batch_autoclean_collections()
     
     def _autoclean_bone_collections(self, prefix, collection):
         """Ensures bones with a prefix only exist in the expected bone collection.
 
         Args:
-            prefix (str, optional): Prefix to match bone names (e.g., 'DEF-').
-            collection (str, optional): The target collection where bones should be assigned.
+            prefix (str): Prefix to match bone names (e.g., 'DEF-').
+            collection (str): The target collection where bones should be assigned.
         """
         if not self.armature_obj:
             raise RuntimeError("Armature object not initialized.")
+
         with mode_utils.ensure_mode(self.armature_obj, 'OBJECT'):
             target_col = self.armature_data.collections.get(collection)
             if not target_col:
                 if self.debug:
                     print(f"⚠️ Target collection '{collection}' not found. Skipping autoclean.")
                 return
-            # Bones matching the prefix
+
             matching_bone_names = self._get_bones_by_type(bone_type=prefix.rstrip("-"))
             for bone_name in matching_bone_names:
                 bone_data = self.armature_data.bones.get(bone_name)
                 if not bone_data:
                     continue
-                # Remove from all wrong collections
+
+                # Reassign to correct collection
                 for col in self.armature_data.collections:
-                    if bone_data.name in col.bones and col != target_col:
+                    if bone_name in col.bones and col != target_col:
                         col.unassign(bone_data)
-                # Make sure assigned to the correct one
-                if bone_data.name not in target_col.bones:
+                if bone_name not in target_col.bones:
                     target_col.assign(bone_data)
+
+                # ⚠️ Set deform status
+                if prefix == "DEF-":
+                    bone_data.use_deform = (bone_name in self.def_bones)
+                else:
+                    bone_data.use_deform = False
+
             if self.debug:
                 print(f"✅ Autocleaned '{prefix}' bones into '{collection}'.")
+
     
     def _batch_autoclean_collections(self):
         """Automatically reassigns known bone prefixes to their expected bone collections."""
@@ -149,7 +164,18 @@ class Rig:
         if not self.armature_obj:
             raise RuntimeError("Armature not initialized.")
         self.spline_crv = curves_lib.make_spline_curve(source_bone_name, self.armature_obj, debug=self.debug)
-    
+
+    def _build_tgt_bones(self):
+        """Creates TGT bones by duplicating DEF bones and applying copy constraints."""
+        tgt_names = bones_lib.duplicate_bones(self.armature_name, self.def_bones, source_prefix="DEF-", target_prefix="TGT-", debug=self.debug)
+        self.tgt_bones = tgt_names
+        bones_lib.match_bone_hierarchy(self.armature_name, self.def_bones, self.tgt_bones)
+        # Constrain def_bones to tgt_bones
+        for tgt_bone, def_bone in zip(self.tgt_bones, self.def_bones):
+            constraints_lib.add_copy_transforms_constraint(self.armature_obj, def_bone, tgt_bone)
+
+        self._finalize_bones("TGT-", "Target Bones", self.tgt_bones)
+
     def _finalize_bones(self, prefix, collection, bone_names=None):
         """Moves bones with a given prefix into a specified bone collection and updates the internal list.
 
@@ -234,6 +260,19 @@ class Rig:
                 return name
         raise ValueError("Root bone not found in candidates.")
     
+    def _make_def_root(self):
+        """Creates a non-deforming DEF-root bone and parents all DEF bones to it."""
+        if not self.def_bones:
+            if self.debug:
+                print("⚠️ No DEF bones to reparent.")
+            return
+        root_name = "DEF-root"
+        # Create the root bone if it doesn't exist
+        if root_name not in self.armature_data.edit_bones:
+            bones_lib.create_root(self.armature_obj, name=root_name)
+        # Now reparent the DEF bones to it
+        bones_lib.reparent_with_offset(self.armature_obj, root_name, self.def_bones)
+    
     def _sort_bone_chain(self, root_bone_name, candidates):
         """Sorts bones following parenting from a root, ensuring proper hierarchy.
 
@@ -265,14 +304,14 @@ class Rig:
 
 class NeckRig(Rig):
     """Specialized rig part for building a neck with optional subdivisions."""
-    def __init__(self, armature_name, side="c"):
+    def __init__(self, armature_name, side="c", debug=False):
         """Initializes a neck rig part with default neck bones and segment count.
 
         Args:
             armature_name (str): The name of the Blender armature object.
             side (str, optional): Side identifier ('c', 'l', or 'r'). Defaults to "c".
         """
-        super().__init__(armature_name, meta_prefix="neck", side=side)
+        super().__init__(armature_name, meta_prefix="neck", side=side, debug=debug)
         self.mta_bones: list[str] = []
         self.subdiv_bones: list[str] = []
 
@@ -286,14 +325,14 @@ class NeckRig(Rig):
 
 class SpineRig(Rig):
     """Specialized rig part for building a spine with optional subdivisions."""
-    def __init__(self, armature_name, side="c"):
+    def __init__(self, armature_name, side="c", debug=False):
         """Initializes a spine rig part with default spine bones and segment count.
 
         Args:
             armature_name (str): The name of the Blender armature object.
             side (str, optional): Side identifier ('c', 'l', or 'r'). Defaults to "c".
         """
-        super().__init__(armature_name, meta_prefix="spine", side=side)
+        super().__init__(armature_name, meta_prefix="spine", side=side, debug=debug)
         self.mta_bones: list[str] = ["MTA-hips.c", "MTA-spine.c", "MTA-chest.c"]
         self.subdiv_bones: list[str]  = ["DEF-spine.c"]
         self.segments: int = 3
